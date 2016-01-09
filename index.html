@@ -99,7 +99,7 @@
 function atualiza_peso(){
 
 var newpeso=document.getElementById("p").value;
-set_peso(newpeso);
+set_peso(parseInt(newpeso));
 
 
 
@@ -110,7 +110,7 @@ document.getElementById("setpeso").innerHTML="<div class=\"alert alert-info\">\n
 
 function atualiza_qitens(){
 
-var qintens=document.getElementById("q").value;
+var qintens=parseInt(document.getElementById("q").value);
 
 
 
@@ -286,8 +286,10 @@ $("#tabela-itens").append(string);
 function define_mochila(){
   i=n_itens;
   k=peso;
-    
-  while( (i !=0) || (k!=0) ){
+
+
+
+  while( i >0 ){
 
     if(mochila[i][k] == mochila[i-1][k]){
 
@@ -307,13 +309,15 @@ function define_mochila(){
 
   }
 
+
+
 document.getElementById("mochila").innerHTML="";
 
 string="<div class=\"panel panel-primary\">\n<div class=\"panel-heading\">Mochila</div>\n<div class=\"panel-body\">";
 
-for(i=0;i<array_solucao.length;i++){
+for(j=0;j<array_solucao.length;j++){
 
-  string=string+ array_solucao[i]+"</br>";
+  string=string+ array_solucao[j]+"</br>";
 
 }
  string=string+"</div></div>";
@@ -324,6 +328,7 @@ document.getElementById("boton").innerHTML="";
 s=" <button type=\"button\" onclick=\"window.location.reload() \" class=\"btn btn-success btn-sm\"  data-toggle=\"tooltip\" title=\"recomeçar\">refresh</button>";
 
 $("#boton").append(s);
+
 
 
 
