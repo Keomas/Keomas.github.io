@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+  <title>Bootstrap Example</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+  <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+  <script src="css/source_code.js" ></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+
+
+</head>
+
+<body>
+
+<div class="container-fluid">
+  <div class="jumbotron">
+  <h1>Programação Dinamica</h1>
+  <p>Simulação da matriz de maximização, utilizado para resolução do problema da mochila</p> 
+</div>
+	<div class="row">
+		
+		<div id="tabela-itens" class="col-sm-4 ">
+        <script>print_itens();</script>        
+      </div>
+		<div id="mochila" class="col-sm-1">
+        <div class="panel panel-primary">
+      <div class="panel-heading">Mochila</div>
+      <div class="panel-body"></div>
+      </div>
+    </div>
+		<div class="col-sm-5 ">
+			<h4>Set Problema</h4>
+      <ul class="nav nav-tabs">
+    		<li class="active"><a data-toggle="tab" href="#setpeso">Peso mochila </a></li>
+    		<li><a data-toggle="tab" href="#quant">Quant Itens </a></li>
+    		<li><a data-toggle="tab" href="#itens">Itens</a></li>
+    		</ul>
+			<div class="tab-content">
+    			<div id="setpeso" class="tab-pane fade in active">
+      				
+      				<div class="form-group">
+  					<label for="usr">Peso:</label>
+  					<input type="text" class="form-control" placeholder="5" id="p">
+					<input type="button" class="btn btn-default" onclick="atualiza_peso()"  value="atualizar" />
+					</div>
+    			</div>
+    			<div id="quant" class="tab-pane fade">
+      					
+      					<div class="form-group">
+  						<label for="q">Quant. Itens:</label>
+  						<input type="text" class="form-control" placeholder="4" id="q">
+						<input type="button" class="btn btn-default" onclick="atualiza_qitens()"  value="atualizar" />
+						</div>
+    			</div>	
+    			
+    			<div id="itens" class="tab-pane fade">
+             
+      				
+      	 </div>
+    			
+    			</div>
+    		</div>
+
+		</div>	
+
+	</div>
+	<div class="row">
+		<div id="matriz" class="col-sm-4" >
+    
+
+    
+
+    </div>
+    
+    
+    <div id="boton" class="col-sm-4 col-sm-push-4 ">
+			
+      <button type="button" onclick="atualiza_tabela()" class="btn btn-primary btn-sm"  data-toggle="tooltip" title="valores da tabela de itens " >gerar matriz</button>
+      
+      <button type="button" onclick="define_mochila()" class="btn btn-success btn-sm"  data-toggle="tooltip" title="valores da tabela de itens " >definir mochila</button>
+      
+		</div>
+	</div>
+
+  		
+
+</div>
+
+
+
+
+
+<script>
+
+function atualiza_peso(){
+
+var newpeso=document.getElementById("p").value;
+set_peso(newpeso);
+
+
+
+document.getElementById("setpeso").innerHTML="<div class=\"alert alert-info\">\n<strong>Info!</strong>  Novo peso igual:&nbsp <strong>"+ newpeso+"</strong></div>";
+	
+	
+}
+
+function atualiza_qitens(){
+
+var qintens=document.getElementById("q").value;
+
+
+
+
+
+string="<form class=\"form-inline\" role=\"form\">\n";
+      
+for(k=1;k<=qintens;k++){
+	string=string+ "<h5>Item "+k+"</h5>\n";
+  
+	string=string+"<div class=\"form-group\">\n<label for=\"peso"+k+"\">Peso:</label>\n<input type=\"text\" class=\"form-control\" id=\"peso"+k+"\">\n</div>\n";
+  
+  
+  string=string+"<div class=\"form-group\">\n<label for=\"v"+k+"\">valor:</label>\n<input type=\"text\" class=\"form-control\" id=\"v"+k+ "\">\n</div>\n";
+  
+		
+}
+
+string=string+"<button type=\"button\" onclick=\"setitens()\" class=\"btn btn-default\">Submit</button></form>";
+
+$("#itens").append(string);
+
+set_nitem(qintens);
+
+
+document.getElementById("quant").innerHTML="<div class=\"alert alert-info\">\n<strong>Info!</strong> Quantidade de itens alterada para:&nbsp<strong> "+ qintens+"</strong></div>";
+
+
+
+}
+
+
+function organiza_items2(q_itens){
+
+  var itens = new Array(q_itens);
+
+  for(i=1;i<=q_itens;i++){
+  
+  itens[i]=new construct_item(i,parseInt(document.getElementById("peso"+i).value),parseInt(document.getElementById("v"+i).value));
+  }
+return itens;
+}
+
+
+
+
+function setitens(){
+
+
+mochila =[];
+mochila = do_matriz(peso,n_itens);
+array_itens = organiza_items2(n_itens);
+
+
+document.getElementById("itens").innerHTML="<div class=\"alert alert-info\">\n<strong>Info!</strong> Valores selecionados  <strong> Clique em gerar matriz e depois definir mochila</strong></div>";
+
+
+}
+
+
+function atualiza_tabela(){
+  resolve();
+  document.getElementById("matriz").innerHTML = "";
+
+string="<h4>matriz</h4>\n";
+  string=string+"<div class=\"table-responsive\"> \n";
+  string=string+"<table class=\"table  table-condensed table-bordered table-hover\"  >\n";
+  string=string+"<thead><tr><th>Item/Peso</th>";
+
+  for(y=0; y<= peso;y++){
+  string=string+"<th class=\"text-center\">"+y+"</th>\n";
+  
+
+  }
+
+
+  string=string+"</tr></thead>\n";
+
+  string=string+"<tboby>";
+
+  for(i=0;i<=n_itens;i++){
+    string=string+"<tr>\n";
+    string=string+"<td><b>"+i+"</b></td>";
+    
+    for(j=0;j<= peso;j++){
+      
+      string=string+"<td class=\"text-primary text-center\">"+mochila[i][j]+"</td>\n";
+      
+
+
+      }
+    string=string+"</tr>";
+  }
+  
+  string=string+"<tboby></table></div>\n";
+
+
+$("#matriz").append(string);
+
+reload_itens();
+
+
+}
+
+
+
+
+
+function reload_itens(){
+
+document.getElementById("tabela-itens").innerHTML = "";
+
+string="<h4>itens</h4>\n";
+string=string+"<div class=\"table-responsive\">\n";
+string=string+"<table class=\"table  table-condensed table-bordered table-hover\"  >\n";
+
+string=string+"<thead><tr><th>Item</th>\n";
+
+
+for(y=1; y<= n_itens;y++){
+
+  string=string+"<th class=\"text-center\">"+y+"</th>\n";
+
+
+
+}
+string=string+"</tr></thead>\n";
+
+string=string+"<tboby>\n";
+
+for(i=0;i<=1;i++){
+    
+  if(i==0){
+    string=string+"<tr>\n";
+
+    string=string+"<td><b>peso</b></td>\n";
+    }else{
+
+    string=string+"<tr>\n";
+
+    string=string+"<td><b>valor</b></td>\n";
+
+
+    }
+
+    for(j=1;j<=n_itens ;j++){
+      
+    if(i==0){
+    string=string+"<td class=\"text-primary text-center\">"+array_itens[j].peso+"</td>\n";
+
+    }else{
+      string=string+"<td class=\"text-primary text-center\">"+array_itens[j].valor+"</td>\n";
+
+    }
+
+
+    }
+    string=string+"</tr>\n";
+
+
+  }
+  string=string+"<tboby></table></div>\n";
+
+$("#tabela-itens").append(string);
+
+
+
+
+
+}
+
+
+function define_mochila(){
+  i=n_itens;
+  k=peso;
+    
+  while( (i !=0) || (k!=0) ){
+
+    if(mochila[i][k] == mochila[i-1][k]){
+
+      i=i-1;
+      
+
+    }else if(mochila[i][k] != mochila[i-1][k]){
+
+      array_solucao.push(i);
+      k=k-array_itens[i].peso;
+      i=i-1;
+      
+    }else{
+
+      alert("erro");
+    }
+
+  }
+
+document.getElementById("mochila").innerHTML="";
+
+string="<div class=\"panel panel-primary\">\n<div class=\"panel-heading\">Mochila</div>\n<div class=\"panel-body\">";
+
+for(i=0;i<array_solucao.length;i++){
+
+  string=string+ array_solucao[i]+"</br>";
+
+}
+ string=string+"</div></div>";
+
+ $("#mochila").append(string);
+
+document.getElementById("boton").innerHTML="";
+s=" <button type=\"button\" onclick=\"window.location.reload() \" class=\"btn btn-success btn-sm\"  data-toggle=\"tooltip\" title=\"recomeçar\">refresh</button>";
+
+$("#boton").append(s);
+
+
+
+}
+
+
+
+
+</script>
+
+
+
+
+</body>
+</html>
