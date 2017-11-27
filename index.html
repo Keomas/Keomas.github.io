@@ -1,346 +1,1532 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE HTML>
+<html>
 <head>
+<title>JabRef references</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<script type="text/javascript">
+<!--
+// QuickSearch script for JabRef HTML export 
+// Version: 3.0
+//
+// Copyright (c) 2006-2011, Mark Schenk
+//
+// This software is distributed under a Creative Commons Attribution 3.0 License
+// http://creativecommons.org/licenses/by/3.0/
+//
+// Features:
+// - intuitive find-as-you-type searching
+//    ~ case insensitive
+//    ~ ignore diacritics (optional)
+//
+// - search with/without Regular Expressions
+// - match BibTeX key
+//
 
-  <title>Programação Dinamica</title>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
-  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
-  <script src="js/source_code.js" ></script>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+// Search settings
+var searchAbstract = true;	// search in abstract
+var searchReview = true;	// search in review
+
+var noSquiggles = true; 	// ignore diacritics when searching
+var searchRegExp = false; 	// enable RegExp searches
 
 
+if (window.addEventListener) {
+	window.addEventListener("load",initSearch,false); }
+else if (window.attachEvent) {
+	window.attachEvent("onload", initSearch); }
+
+function initSearch() {
+	// check for quick search table and searchfield
+	if (!document.getElementById('qs_table')||!document.getElementById('quicksearch')) { return; }
+
+	// load all the rows and sort into arrays
+	loadTableData();
+	
+	//find the query field
+	qsfield = document.getElementById('qs_field');
+
+	// previous search term; used for speed optimisation
+	prevSearch = '';
+
+	//find statistics location
+	stats = document.getElementById('stat');
+	setStatistics(-1);
+	
+	// set up preferences
+	initPreferences();
+
+	// shows the searchfield
+	document.getElementById('quicksearch').style.display = 'block';
+	document.getElementById('qs_field').onkeyup = quickSearch;
+}
+
+function loadTableData() {
+	// find table and appropriate rows
+	searchTable = document.getElementById('qs_table');
+	var allRows = searchTable.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+
+	// split all rows into entryRows and infoRows (e.g. abstract, review, bibtex)
+	entryRows = new Array(); infoRows = new Array(); absRows = new Array(); revRows = new Array();
+
+	// get data from each row
+	entryRowsData = new Array(); absRowsData = new Array(); revRowsData = new Array(); 
+	
+	BibTeXKeys = new Array();
+	
+	for (var i=0, k=0, j=0; i<allRows.length;i++) {
+		if (allRows[i].className.match(/entry/)) {
+			entryRows[j] = allRows[i];
+			entryRowsData[j] = stripDiacritics(getTextContent(allRows[i]));
+			allRows[i].id ? BibTeXKeys[j] = allRows[i].id : allRows[i].id = 'autokey_'+j;
+			j ++;
+		} else {
+			infoRows[k++] = allRows[i];
+			// check for abstract/review
+			if (allRows[i].className.match(/abstract/)) {
+				absRows.push(allRows[i]);
+				absRowsData[j-1] = stripDiacritics(getTextContent(allRows[i]));
+			} else if (allRows[i].className.match(/review/)) {
+				revRows.push(allRows[i]);
+				revRowsData[j-1] = stripDiacritics(getTextContent(allRows[i]));
+			}
+		}
+	}
+	//number of entries and rows
+	numEntries = entryRows.length;
+	numInfo = infoRows.length;
+	numAbs = absRows.length;
+	numRev = revRows.length;
+}
+
+function quickSearch(){
+	
+	tInput = qsfield;
+
+	if (tInput.value.length == 0) {
+		showAll();
+		setStatistics(-1);
+		qsfield.className = '';
+		return;
+	} else {
+		t = stripDiacritics(tInput.value);
+
+		if(!searchRegExp) { t = escapeRegExp(t); }
+			
+		// only search for valid RegExp
+		try {
+			textRegExp = new RegExp(t,"i");
+			closeAllInfo();
+			qsfield.className = '';
+		}
+			catch(err) {
+			prevSearch = tInput.value;
+			qsfield.className = 'invalidsearch';
+			return;
+		}
+	}
+	
+	// count number of hits
+	var hits = 0;
+
+	// start looping through all entry rows
+	for (var i = 0; cRow = entryRows[i]; i++){
+
+		// only show search the cells if it isn't already hidden OR if the search term is getting shorter, then search all
+		if(cRow.className.indexOf('noshow')==-1 || tInput.value.length <= prevSearch.length){
+			var found = false; 
+
+			if (entryRowsData[i].search(textRegExp) != -1 || BibTeXKeys[i].search(textRegExp) != -1){ 
+				found = true;
+			} else {
+				if(searchAbstract && absRowsData[i]!=undefined) {
+					if (absRowsData[i].search(textRegExp) != -1){ found=true; } 
+				}
+				if(searchReview && revRowsData[i]!=undefined) {
+					if (revRowsData[i].search(textRegExp) != -1){ found=true; } 
+				}
+			}
+			
+			if (found){
+				cRow.className = 'entry show';
+				hits++;
+			} else {
+				cRow.className = 'entry noshow';
+			}
+		}
+	}
+
+	// update statistics
+	setStatistics(hits)
+	
+	// set previous search value
+	prevSearch = tInput.value;
+}
+
+
+// Strip Diacritics from text
+// http://stackoverflow.com/questions/990904/javascript-remove-accents-in-strings
+
+// String containing replacement characters for stripping accents 
+var stripstring = 
+    'AAAAAAACEEEEIIII'+
+    'DNOOOOO.OUUUUY..'+
+    'aaaaaaaceeeeiiii'+
+    'dnooooo.ouuuuy.y'+
+    'AaAaAaCcCcCcCcDd'+
+    'DdEeEeEeEeEeGgGg'+
+    'GgGgHhHhIiIiIiIi'+
+    'IiIiJjKkkLlLlLlL'+
+    'lJlNnNnNnnNnOoOo'+
+    'OoOoRrRrRrSsSsSs'+
+    'SsTtTtTtUuUuUuUu'+
+    'UuUuWwYyYZzZzZz.';
+
+function stripDiacritics(str){
+
+    if(noSquiggles==false){
+        return str;
+    }
+
+    var answer='';
+    for(var i=0;i<str.length;i++){
+        var ch=str[i];
+        var chindex=ch.charCodeAt(0)-192;   // Index of character code in the strip string
+        if(chindex>=0 && chindex<stripstring.length){
+            // Character is within our table, so we can strip the accent...
+            var outch=stripstring.charAt(chindex);
+            // ...unless it was shown as a '.'
+            if(outch!='.')ch=outch;
+        }
+        answer+=ch;
+    }
+    return answer;
+}
+
+// http://stackoverflow.com/questions/3446170/escape-string-for-use-in-javascript-regex
+// NOTE: must escape every \ in the export code because of the JabRef Export...
+function escapeRegExp(str) {
+  return str.replace(/[-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+}
+
+function toggleInfo(articleid,info) {
+
+	var entry = document.getElementById(articleid);
+	var abs = document.getElementById('abs_'+articleid);
+	var rev = document.getElementById('rev_'+articleid);
+	var bib = document.getElementById('bib_'+articleid);
+	
+	if (abs && info == 'abstract') {
+		abs.className.indexOf('noshow') == -1?abs.className = 'abstract noshow':abs.className = 'abstract show';
+	} else if (rev && info == 'review') {
+		rev.className.indexOf('noshow') == -1?rev.className = 'review noshow':rev.className = 'review show';
+	} else if (bib && info == 'bibtex') {
+		bib.className.indexOf('noshow') == -1?bib.className = 'bibtex noshow':bib.className = 'bibtex show';
+	} else { 
+		return;
+	}
+
+	// check if one or the other is available
+	var revshow; var absshow; var bibshow;
+	(abs && abs.className.indexOf('noshow') == -1)? absshow = true: absshow = false;
+	(rev && rev.className.indexOf('noshow') == -1)? revshow = true: revshow = false;	
+	(bib && bib.className.indexOf('noshow') == -1)? bibshow = true: bibshow = false;
+	
+	// highlight original entry
+	if(entry) {
+		if (revshow || absshow || bibshow) {
+		entry.className = 'entry highlight show';
+		} else {
+		entry.className = 'entry show';
+		}
+	}
+	
+	// When there's a combination of abstract/review/bibtex showing, need to add class for correct styling
+	if(absshow) {
+		(revshow||bibshow)?abs.className = 'abstract nextshow':abs.className = 'abstract';
+	} 
+	if (revshow) {
+		bibshow?rev.className = 'review nextshow': rev.className = 'review';
+	}	
+	
+}
+
+function setStatistics (hits) {
+	if(hits < 0) { hits=numEntries; }
+	if(stats) { stats.firstChild.data = hits + '/' + numEntries}
+}
+
+function getTextContent(node) {
+	// Function written by Arve Bersvendsen
+	// http://www.virtuelvis.com
+	
+	if (node.nodeType == 3) {
+	return node.nodeValue;
+	} // text node
+	if (node.nodeType == 1 && node.className != "infolinks") { // element node
+	var text = [];
+	for (var chld = node.firstChild;chld;chld=chld.nextSibling) {
+		text.push(getTextContent(chld));
+	}
+	return text.join("");
+	} return ""; // some other node, won't contain text nodes.
+}
+
+function showAll(){
+	closeAllInfo();
+	for (var i = 0; i < numEntries; i++){ entryRows[i].className = 'entry show'; }
+}
+
+function closeAllInfo(){
+	for (var i=0; i < numInfo; i++){
+		if (infoRows[i].className.indexOf('noshow') ==-1) {
+			infoRows[i].className = infoRows[i].className + ' noshow';
+		}
+	}
+}
+
+function clearQS() {
+	qsfield.value = '';
+	showAll();
+}
+
+function redoQS(){
+	showAll();
+	quickSearch(qsfield);
+}
+
+function updateSetting(obj){
+	var option = obj.id;
+	var checked = obj.value;
+
+	switch(option)
+	 {
+	 case "opt_searchAbs":
+	   searchAbstract=!searchAbstract;
+	   redoQS();
+	   break;
+	 case "opt_searchRev":
+	   searchReview=!searchReview;
+	   redoQS();
+	   break;
+	 case "opt_useRegExp":
+	   searchRegExp=!searchRegExp;
+	   redoQS();
+	   break;
+	 case "opt_noAccents":
+	   noSquiggles=!noSquiggles;
+	   loadTableData();
+	   redoQS();
+	   break;
+	 }
+}
+
+function initPreferences(){
+	if(searchAbstract){document.getElementById("opt_searchAbs").checked = true;}
+	if(searchReview){document.getElementById("opt_searchRev").checked = true;}
+	if(noSquiggles){document.getElementById("opt_noAccents").checked = true;}
+	if(searchRegExp){document.getElementById("opt_useRegExp").checked = true;}
+	
+	if(numAbs==0) {document.getElementById("opt_searchAbs").parentNode.style.display = 'none';}
+	if(numRev==0) {document.getElementById("opt_searchRev").parentNode.style.display = 'none';}
+}
+
+function toggleSettings(){
+	var togglebutton = document.getElementById('showsettings');
+	var settings = document.getElementById('settings');
+	
+	if(settings.className == "hidden"){
+		settings.className = "show";
+		togglebutton.innerText = "close settings";
+		togglebutton.textContent = "close settings";
+	}else{
+		settings.className = "hidden";
+		togglebutton.innerText = "settings...";		
+		togglebutton.textContent = "settings...";
+	}
+}
+
+-->
+</script>
+<style type="text/css">
+body { background-color: white; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.2; padding: 1em; color: #2E2E2E; margin: auto 2em; }
+
+form#quicksearch { width: auto; border-style: solid; border-color: gray; border-width: 1px 0px; padding: 0.7em 0.5em; display:none; position:relative; }
+span#searchstat {padding-left: 1em;}
+
+div#settings { margin-top:0.7em; /* border-bottom: 1px transparent solid; background-color: #efefef; border: 1px grey solid; */ }
+div#settings ul {margin: 0; padding: 0; }
+div#settings li {margin: 0; padding: 0 1em 0 0; display: inline; list-style: none; }
+div#settings li + li { border-left: 2px #efefef solid; padding-left: 0.5em;}
+div#settings input { margin-bottom: 0px;}
+
+div#settings.hidden {display:none;}
+
+#showsettings { border: 1px grey solid; padding: 0 0.5em; float:right; line-height: 1.6em; text-align: right; }
+#showsettings:hover { cursor: pointer; }
+
+.invalidsearch { background-color: red; }
+input[type="button"] { background-color: #efefef; border: 1px #2E2E2E solid;}
+
+table { width: 100%; empty-cells: show; border-spacing: 0em 0.2em; margin: 1em 0em; border-style: none; }
+th, td { border: 1px gray solid; border-width: 1px 1px; padding: 0.5em; vertical-align: top; text-align: left; }
+th { background-color: #efefef; }
+td + td, th + th { border-left: none; }
+
+td a { color: navy; text-decoration: none; }
+td a:hover  { text-decoration: underline; }
+
+tr.noshow { display: none;}
+tr.highlight td { background-color: #EFEFEF; border-top: 2px #2E2E2E solid; font-weight: bold; }
+tr.abstract td, tr.review td, tr.bibtex td { background-color: #EFEFEF; text-align: justify; border-bottom: 2px #2E2E2E solid; }
+tr.nextshow td { border-bottom: 1px gray solid; }
+
+tr.bibtex pre { width: 100%; overflow: auto; white-space: pre-wrap;}
+p.infolinks { margin: 0.3em 0em 0em 0em; padding: 0px; }
+
+@media print {
+	p.infolinks, #qs_settings, #quicksearch, t.bibtex { display: none !important; }
+	tr { page-break-inside: avoid; }
+}
+</style>
 </head>
-
 <body>
 
-<div class="container-fluid">
-  <div class="jumbotron">
-  <h1>Programação Dinamica</h1>
-  <p>Simulação da matriz de maximização, utilizado para resolução do problema da mochila</p> 
+<form action="" id="quicksearch">
+<input type="text" id="qs_field" autocomplete="off" placeholder="Type to search..." /> <input type="button" onclick="clearQS()" value="clear" />
+<span id="searchstat">Matching entries: <span id="stat">0</span></span>
+<div id="showsettings" onclick="toggleSettings()">settings...</div>
+<div id="settings" class="hidden">
+<ul>
+<li><input type="checkbox" class="search_setting" id="opt_searchAbs" onchange="updateSetting(this)"><label for="opt_searchAbs"> include abstract</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_searchRev" onchange="updateSetting(this)"><label for="opt_searchRev"> include review</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_useRegExp" onchange="updateSetting(this)"><label for="opt_useRegExp"> use RegExp</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_noAccents" onchange="updateSetting(this)"><label for="opt_noAccents"> ignore accents</label></li>
+</ul>
 </div>
-	<div class="row">
-		
-		<div id="tabela-itens" class="col-sm-4 ">
-        <script>print_itens();</script>        
-      </div>
-		<div id="mochila" class="col-sm-1">
-        <div class="panel panel-primary">
-      <div class="panel-heading">Mochila</div>
-      <div class="panel-body"></div>
-      </div>
-    </div>
-		<div class="col-sm-5 ">
-			<h4>Set Problema</h4>
-      <ul class="nav nav-tabs">
-    		<li class="active"><a data-toggle="tab" href="#setpeso">Peso mochila </a></li>
-    		<li><a data-toggle="tab" href="#quant">Quant Itens </a></li>
-    		<li><a data-toggle="tab" href="#itens">Itens</a></li>
-    		</ul>
-			<div class="tab-content">
-    			<div id="setpeso" class="tab-pane fade in active">
-      				
-      				<div class="form-group">
-  					<label for="usr">Peso:</label>
-  					<input type="text" class="form-control" placeholder="5" id="p">
-					<input type="button" class="btn btn-default" onclick="atualiza_peso()"  value="atualizar" />
-					</div>
-    			</div>
-    			<div id="quant" class="tab-pane fade">
-      					
-      					<div class="form-group">
-  						<label for="q">Quant. Itens:</label>
-  						<input type="text" class="form-control" placeholder="4" id="q">
-						<input type="button" class="btn btn-default" onclick="atualiza_qitens()"  value="atualizar" />
-						</div>
-    			</div>	
-    			
-    			<div id="itens" class="tab-pane fade">
-             
-      				
-      	 </div>
-    			
-    			</div>
-    		</div>
-
-		</div>	
-
-	</div>
-	<div class="row">
-		<div id="matriz" class="col-sm-4" >
-    
-
-    
-
-    </div>
-    
-    
-    <div id="boton" class="col-sm-4 col-sm-push-4 ">
-			
-      <button type="button" onclick="atualiza_tabela()" class="btn btn-primary btn-sm"  data-toggle="tooltip" title="valores da tabela de itens " >gerar matriz</button>
-      
-      <button type="button" onclick="define_mochila()" class="btn btn-success btn-sm"  data-toggle="tooltip" title="valores da tabela de itens " >definir mochila</button>
-      
-		</div>
-	</div>
-
-  		
-
-</div>
-
-
-
-
-
-<script>
-
-function atualiza_peso(){
-
-var newpeso=document.getElementById("p").value;
-set_peso(parseInt(newpeso));
-
-
-
-document.getElementById("setpeso").innerHTML="<div class=\"alert alert-info\">\n<strong>Info!</strong>  Novo peso igual:&nbsp <strong>"+ newpeso+"</strong></div>";
-	
-	
+</form>
+<table id="qs_table" border="1">
+<thead><tr><th width="20%">Author</th><th width="30%">Title</th><th width="5%">Year</th><th width="30%">Journal/Proceedings</th><th width="10%">Reftype</th><th width="5%">DOI/URL</th></tr></thead>
+<tbody><tr id="Adhikari2015" class="entry">
+	<td>Adhikari, R., Verma, G. and Khandelwal, I.</td>
+	<td>A Model Ranking Based Selective Ensemble Approach for Time Series Forecasting <p class="infolinks">[<a href="javascript:toggleInfo('Adhikari2015','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Adhikari2015','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>Procedia Computer Science<br/>Vol. 48, pp. 14-21&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.procs.2015.04.104">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Adhikari2015" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Time series analysis is a highly active research topic that encompasses various domains of science, engineering, and finance. A major challenge in this field is to obtain reasonably accurate forecasts of future data from analyzing the past records. A fruitful alternative to using a single forecasting technique is to combine the forecasts from several conceptually different models. Numerous research studies in literature strongly recommend this approach, due to the fact that a combination of multiple forecasts almost always substantially reduces the overall forecasting errors as well as outperforms the component models. In this paper, we propose an ensemble method that selectively combines some of the constituent forecasting models, instead of combining all of them. On each time series, the component models are successively ranked as per their past forecasting accuracies and then we combine the forecasts of a group of high ranked models. Empirical analysis is conducted with nine individual models and four real-world time series datasets. Results clearly show that our proposed ensemble mechanism achieves consistently better accuracies than all component models and other conventional forecasts combination schemes.</td>
+</tr>
+<tr id="bib_Adhikari2015" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Adhikari2015,
+  author = {Adhikari, Ratnadip and Verma, Ghanshyam and Khandelwal, Ina},
+  title = {A Model Ranking Based Selective Ensemble Approach for Time Series Forecasting},
+  journal = {Procedia Computer Science},
+  year = {2015},
+  volume = {48},
+  pages = {14--21},
+  doi = {https://doi.org/10.1016/j.procs.2015.04.104}
 }
-
-function atualiza_qitens(){
-
-var qintens=parseInt(document.getElementById("q").value);
-
-
-
-
-
-string="<form class=\"form-inline\" role=\"form\">\n";
-      
-for(k=1;k<=qintens;k++){
-	string=string+ "<h5>Item "+k+"</h5>\n";
-  
-	string=string+"<div class=\"form-group\">\n<label for=\"peso"+k+"\">Peso:</label>\n<input type=\"text\" class=\"form-control\" id=\"peso"+k+"\">\n</div>\n";
-  
-  
-  string=string+"<div class=\"form-group\">\n<label for=\"v"+k+"\">valor:</label>\n<input type=\"text\" class=\"form-control\" id=\"v"+k+ "\">\n</div>\n";
-  
-		
+</pre></td>
+</tr>
+<tr id="Ali2017" class="entry">
+	<td>Ali, R., Lee, S. and Chung, T.C.</td>
+	<td>Accurate multi-criteria decision making methodology for recommending machine learning algorithm <p class="infolinks">[<a href="javascript:toggleInfo('Ali2017','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Ali2017','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>Expert Systems with Applications<br/>Vol. 71, pp. 257-278&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.eswa.2016.11.034">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Ali2017" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: OBJECTIVE<br>Manual evaluation of machine learning algorithms and selection of a suitable classifier from the list of available candidate classifiers, is highly time consuming and challenging task. If the selection is not carefully and accurately done, the resulting classification model will not be able to produce the expected performance results. In this study, we present an accurate multi-criteria decision making methodology (AMD) which empirically evaluates and ranks classifiers' and allow end users or experts to choose the top ranked classifier for their applications to learn and build classification models for them. <br><br>METHODS AND MATERIAL<br>Existing classifiers performance analysis and recommendation methodologies lack (a) appropriate method for suitable evaluation criteria selection, (b) relative consistent weighting mechanism, (c) fitness assessment of the classifiers' performances, and (d) satisfaction of various constraints during the analysis process. To assist machine learning practitioners in the selection of suitable classifier(s), AMD methodology is proposed that presents an expert group-based criteria selection method, relative consistent weighting scheme, a new ranking method, called optimum performance ranking criteria, based on multiple evaluation metrics, statistical significance and fitness assessment functions, and implicit and explicit constraints satisfaction at the time of analysis. For ranking the classifiers performance, the proposed ranking method integrates Wgt.Avg.F-score, CPUTimeTesting, CPUTimeTraining, and Consistency measures using the technique for order performance by similarity to ideal solution (TOPSIS). The final relative closeness score produced by TOPSIS, is ranked and the practitioners select the best performance (top-ranked) classifier for their problems in-hand. <br><br>FINDINGS<br>Based on the extensive experiments performed on 15 publically available UCI and OpenML datasets using 35 classification algorithms from heterogeneous families of classifiers, an average Spearman's rank correlation coefficient of 0.98 is observed. Similarly, the AMD method has showed improved performance of 0.98 average Spearman's rank correlation coefficient as compared to 0.83 and 0.045 correlation coefficient of the state-of-the-art ranking methods, performance of algorithms (PAlg) and adjusted ratio of ratio (ARR). <br><br>CONCLUSION AND IMPLICATION<br>The evaluation, empirical analysis of results and comparison with state-of-the-art methods demonstrate the feasibility of AMD methodology, especially the selection and weighting of right evaluation criteria, accurate ranking and selection of optimum performance classifier(s) for the user's application's data in hand. AMD reduces expert's time and efforts and improves system performance by designing suitable classifier recommended by AMD methodology.</td>
+</tr>
+<tr id="bib_Ali2017" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Ali2017,
+  author = {Ali, Rahman and Lee, Sungyoung and Chung, Tae Choong},
+  title = {Accurate multi-criteria decision making methodology for recommending machine learning algorithm},
+  journal = {Expert Systems with Applications},
+  year = {2017},
+  volume = {71},
+  pages = {257--278},
+  doi = {https://doi.org/10.1016/j.eswa.2016.11.034}
 }
-
-string=string+"<button type=\"button\" onclick=\"setitens()\" class=\"btn btn-default\">Submit</button></form>";
-
-$("#itens").append(string);
-
-set_nitem(qintens);
-
-
-document.getElementById("quant").innerHTML="<div class=\"alert alert-info\">\n<strong>Info!</strong> Quantidade de itens alterada para:&nbsp<strong> "+ qintens+"</strong></div>";
-
-
-
+</pre></td>
+</tr>
+<tr id="Bosnic2010" class="entry">
+	<td>Bosni&cacute;, Z. and Kononenko, I.</td>
+	<td>Automatic selection of reliability estimates for individual regression predictions <p class="infolinks">[<a href="javascript:toggleInfo('Bosnic2010','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Bosnic2010','bibtex')">BibTeX</a>]</p></td>
+	<td>2010</td>
+	<td>Knowledge Engineering Review<br/>Vol. 25(1)&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1017/S0269888909990154">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Bosnic2010" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In machine learning and its risk-sensitive applications (e.g. medicine, engineering, business), the reliability estimates for individual predictions provide more information about the individual prediction error (the difference between the true label and regression prediction) than the average accuracy of predictive model (e.g. relative mean squared error). Furthermore, they enable the users to distinguish between more and less reliable predictions. The empirical evaluations of the existing individual reliability estimates revealed that the successful estimates performance depends on the used regression model and on the particular problem domain. In the current paper, we focus on that problem as such and propose and empirically evaluate two approaches for automatic selection of the most appropriate estimate for a given domain and regression model: the internal cross-validation approach and the meta-learning approach. The testing results of both approaches demonstrated an advantage in the performance of dynamically chosen reliability estimates to the performance of the individual reliability estimates. The best results were achieved using the internal cross-validation procedure, where reliability estimates significantly positively correlated with the prediction error in 73&#37; of experiments. In addition, the preliminary testing of the proposed methodology on a medical domain demonstrated the potential for its usage in practice. Copyright textcopyright 2010 Cambridge University Press.</td>
+</tr>
+<tr id="bib_Bosnic2010" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Bosnic2010,
+  author = {Bosni&cacute;, Z. and Kononenko, I.},
+  title = {Automatic selection of reliability estimates for individual regression predictions},
+  journal = {Knowledge Engineering Review},
+  year = {2010},
+  volume = {25},
+  number = {1},
+  doi = {https://doi.org/10.1017/S0269888909990154}
 }
-
-
-function organiza_items2(q_itens){
-
-  var itens = new Array(q_itens);
-
-  for(i=1;i<=q_itens;i++){
-  
-  itens[i]=new construct_item(i,parseInt(document.getElementById("peso"+i).value),parseInt(document.getElementById("v"+i).value));
-  }
-return itens;
+</pre></td>
+</tr>
+<tr id="Brazdil2003" class="entry">
+	<td>Brazdil, P., Soares, C. and Da Coasta, J.</td>
+	<td>Ranking learning algorithms: Using IBL and meta-learning on accuracy and time results <p class="infolinks">[<a href="javascript:toggleInfo('Brazdil2003','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Brazdil2003','bibtex')">BibTeX</a>]</p></td>
+	<td>2003</td>
+	<td>Machine Learning<br/>Vol. 50(3)&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1023/A:1021713901879">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Brazdil2003" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We present a meta-learning method to support selection of candidate learning algorithms. It uses a k-Nearest Neighbor algorithm to identify the datasets that are most similar to the one at hand. The distance between datasets is assessed using a relatively small set of data characteristics, which was selected to represent properties that affect algorithm performance. The performance of the candidate algorithms on those datasets is used to generate a recommendation to the user in the form of a ranking. The performance is assessed using a multicriteria evaluation measure that takes not only accuracy, but also time into account. As it is not common in Machine Learning to work with rankings, we had to identify and adapt existing statistical techniques to devise an appropriate evaluation methodology. Using that methodology, we show that the meta-learning method presented leads to significantly better rankings than the baseline ranking method. The evaluation methodology is general and can be adapted to other ranking problems. Although here we have concerned on ranking classification algorithms, the meta-learning framework presented can provide assistance in the selection of combinations of methods or more complex problem solving strategies.</td>
+</tr>
+<tr id="bib_Brazdil2003" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Brazdil2003,
+  author = {Brazdil, P.B. and Soares, C. and Da Coasta, J.P.},
+  title = {Ranking learning algorithms: Using IBL and meta-learning on accuracy and time results},
+  journal = {Machine Learning},
+  year = {2003},
+  volume = {50},
+  number = {3},
+  doi = {https://doi.org/10.1023/A:1021713901879}
 }
-
-
-
-
-function setitens(){
-
-
-mochila =[];
-mochila = do_matriz(peso,n_itens);
-array_itens = organiza_items2(n_itens);
-
-
-document.getElementById("itens").innerHTML="<div class=\"alert alert-info\">\n<strong>Info!</strong> Valores selecionados  <strong> Clique em gerar matriz e depois definir mochila</strong></div>";
-
-
+</pre></td>
+</tr>
+<tr id="Britto2014" class="entry">
+	<td>Britto, A.S., Sabourin, R. and Oliveira, L.E.</td>
+	<td>Dynamic selection of classifiers—A comprehensive review <p class="infolinks">[<a href="javascript:toggleInfo('Britto2014','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Britto2014','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>Pattern Recognition<br/>Vol. 47(11), pp. 3665-3680&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.patcog.2014.05.003">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Britto2014" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: This work presents a literature review of multiple classifier systems based on the dynamic selection of classifiers. First, it briefly reviews some basic concepts and definitions related to such a classification approach and then it presents the state of the art organized according to a proposed taxonomy. In addition, a two-step analysis is applied to the results of the main methods reported in the literature, considering different classification problems. The first step is based on statistical analyses of the significance of these results. The idea is to figure out the problems for which a significant contribution can be observed in terms of classification performance by using a dynamic selection approach. The second step, based on data complexity measures, is used to investigate whether or not a relation exists between the possible performance contribution and the complexity of the classification problem. From this comprehensive study, we observed that, for some classification problems, the performance contribution of the dynamic selection approach is statistically significant when compared to that of a single-based classifier. In addition, we found evidence of a relation between the observed performance contribution and the complexity of the classification problem. These observations allow us to suggest, from the classification problem complexity, that further work should be done to predict whether or not to use a dynamic selection approach.</td>
+</tr>
+<tr id="bib_Britto2014" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Britto2014,
+  author = {Britto, Alceu S. and Sabourin, Robert and Oliveira, Luiz E.S.},
+  title = {Dynamic selection of classifiers—A comprehensive review},
+  journal = {Pattern Recognition},
+  year = {2014},
+  volume = {47},
+  number = {11},
+  pages = {3665--3680},
+  doi = {https://doi.org/10.1016/j.patcog.2014.05.003}
 }
-
-
-function atualiza_tabela(){
-  resolve();
-  document.getElementById("matriz").innerHTML = "";
-
-string="<h4>matriz</h4>\n";
-  string=string+"<div class=\"table-responsive\"> \n";
-  string=string+"<table class=\"table  table-condensed table-bordered table-hover\"  >\n";
-  string=string+"<thead><tr><th>Item/Peso</th>";
-
-  for(y=0; y<= peso;y++){
-  string=string+"<th class=\"text-center\">"+y+"</th>\n";
-  
-
-  }
-
-
-  string=string+"</tr></thead>\n";
-
-  string=string+"<tboby>";
-
-  for(i=0;i<=n_itens;i++){
-    string=string+"<tr>\n";
-    string=string+"<td><b>"+i+"</b></td>";
-    
-    for(j=0;j<= peso;j++){
-      
-      string=string+"<td class=\"text-primary text-center\">"+mochila[i][j]+"</td>\n";
-      
-
-
-      }
-    string=string+"</tr>";
-  }
-  
-  string=string+"<tboby></table></div>\n";
-
-
-$("#matriz").append(string);
-
-reload_itens();
-
-
+</pre></td>
+</tr>
+<tr id="Chekina2011" class="entry">
+	<td>Chekina, L., Rokach, L. and Shapira, B.</td>
+	<td>Meta-learning for Selecting a Multi-label Classification Algorithm <p class="infolinks">[<a href="javascript:toggleInfo('Chekina2011','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Chekina2011','bibtex')">BibTeX</a>]</p></td>
+	<td>2011</td>
+	<td>2011 IEEE 11th International Conference on Data Mining Workshops, pp. 220-227&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/ICDMW.2011.118">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Chekina2011" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Although various algorithms for multi-label classification have been developed in recent years, there is little, if any, information as to when each method is beneficial. The main goal of this paper is to compare the classification performance of several multi-label algorithms and to develop a set of rules or tools that will help in selecting the optimal algorithm according to a specific dataset and target evaluation measure. We utilize a meta-learning approach allowing fast automatic selection of the most appropriate algorithm for an unseen dataset based on its descriptive characteristics. We also define a list of characteristics specific for multi-label datasets. The experimental results indicate the applicability and usefulness of the meta-learning approach.</td>
+</tr>
+<tr id="bib_Chekina2011" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Chekina2011,
+  author = {Chekina, L and Rokach, L and Shapira, B},
+  title = {Meta-learning for Selecting a Multi-label Classification Algorithm},
+  booktitle = {2011 IEEE 11th International Conference on Data Mining Workshops},
+  year = {2011},
+  pages = {220--227},
+  doi = {https://doi.org/10.1109/ICDMW.2011.118}
 }
-
-
-
-
-
-function reload_itens(){
-
-document.getElementById("tabela-itens").innerHTML = "";
-
-string="<h4>itens</h4>\n";
-string=string+"<div class=\"table-responsive\">\n";
-string=string+"<table class=\"table  table-condensed table-bordered table-hover\"  >\n";
-
-string=string+"<thead><tr><th>Item</th>\n";
-
-
-for(y=1; y<= n_itens;y++){
-
-  string=string+"<th class=\"text-center\">"+y+"</th>\n";
-
-
-
+</pre></td>
+</tr>
+<tr id="Cui2016" class="entry">
+	<td>Cui, C., Hu, M., Weir, J.D. and Wu, T.</td>
+	<td>A recommendation system for meta-modeling: A meta-learning based approach <p class="infolinks">[<a href="javascript:toggleInfo('Cui2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Cui2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>Expert Systems with Applications<br/>Vol. 46, pp. 33-44&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.eswa.2015.10.021">DOI</a> <a href="http://linkinghub.elsevier.com/retrieve/pii/S0957417415007162">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Cui2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Various meta-modeling techniques have been developed to replace computationally expensive simulation models. The performance of these meta-modeling techniques on different models is varied which makes existing model selection/recommendation approaches (e.g., trial-and-error, ensemble) problematic. To address these research gaps, we propose a general meta-modeling recommendation system using meta-learning which can automate the meta-modeling recommendation process by intelligently adapting the learning bias to problem characterizations. The proposed intelligent recommendation system includes four modules: (1) problem module, (2) meta-feature module which includes a comprehensive set of meta-features to characterize the geometrical properties of problems, (3) meta-learner module which compares the performance of instance-based and model-based learning approaches for optimal framework design, and (4) performance evaluation module which introduces two criteria, Spearman's ranking correlation coefficient and hit ratio, to evaluate the system on the accuracy of model ranking prediction and the precision of the best model recommendation, respectively. To further improve the performance of meta-learning for meta-modeling recommendation, different types of feature reduction techniques, including singular value decomposition, stepwise regression and ReliefF, are studied. Experiments show that our proposed framework is able to achieve 94&#37; correlation on model rankings, and a 91&#37; hit ratio on best model recommendation. Moreover, the computational cost of meta-modeling recommendation is significantly reduced from an order of minutes to seconds compared to traditional trial-and-error and ensemble process. The proposed framework can significantly advance the research in meta-modeling recommendation, and can be applied for data-driven system modeling.</td>
+</tr>
+<tr id="bib_Cui2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Cui2016,
+  author = {Cui, Can and Hu, Mengqi and Weir, Jeffery D. and Wu, Teresa},
+  title = {A recommendation system for meta-modeling: A meta-learning based approach},
+  journal = {Expert Systems with Applications},
+  year = {2016},
+  volume = {46},
+  pages = {33--44},
+  url = {http://linkinghub.elsevier.com/retrieve/pii/S0957417415007162},
+  doi = {https://doi.org/10.1016/j.eswa.2015.10.021}
 }
-string=string+"</tr></thead>\n";
-
-string=string+"<tboby>\n";
-
-for(i=0;i<=1;i++){
-    
-  if(i==0){
-    string=string+"<tr>\n";
-
-    string=string+"<td><b>peso</b></td>\n";
-    }else{
-
-    string=string+"<tr>\n";
-
-    string=string+"<td><b>valor</b></td>\n";
-
-
-    }
-
-    for(j=1;j<=n_itens ;j++){
-      
-    if(i==0){
-    string=string+"<td class=\"text-primary text-center\">"+array_itens[j].peso+"</td>\n";
-
-    }else{
-      string=string+"<td class=\"text-primary text-center\">"+array_itens[j].valor+"</td>\n";
-
-    }
-
-
-    }
-    string=string+"</tr>\n";
-
-
-  }
-  string=string+"<tboby></table></div>\n";
-
-$("#tabela-itens").append(string);
-
-
-
-
-
+</pre></td>
+</tr>
+<tr id="Cunha2018" class="entry">
+	<td>Cunha, T., Soares, C. and de Carvalho, A.C.</td>
+	<td>Metalearning and Recommender Systems: A literature review and empirical study on the algorithm selection problem for Collaborative Filtering <p class="infolinks">[<a href="javascript:toggleInfo('Cunha2018','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Cunha2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>Information Sciences<br/>Vol. 423, pp. 128-144&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.ins.2017.09.050">DOI</a> <a href="http://linkinghub.elsevier.com/retrieve/pii/S0020025517309702">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Cunha2018" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: textcopyright 2017 Elsevier Inc. The problem of information overload motivated the appearance of Recommender Systems. From the several open problems in this area, the decision of which is the best recommendation algorithm for a specific problem is one of the most important and less studied. The current trend to solve this problem is the experimental evaluation of several recommendation algorithms in a handful of datasets. However, these studies require an extensive amount of computational resources, particularly processing time. To avoid these drawbacks, researchers have investigated the use of Metalearning to select the best recommendation algorithms in different scopes. Such studies allow to understand the relationships between data characteristics and the relative performance of recommendation algorithms, which can be used to select the best algorithm(s) for a new problem. The contributions of this study are two-fold: 1) to identify and discuss the key concepts of algorithm selection for recommendation algorithms via a systematic literature review and 2) to perform an experimental study on the Metalearning approaches reviewed in order to identify the most promising concepts for automatic selection of recommendation algorithms.</td>
+</tr>
+<tr id="bib_Cunha2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Cunha2018,
+  author = {Cunha, Tiago and Soares, Carlos and de Carvalho, Andr&eacute; C.P.L.F.},
+  title = {Metalearning and Recommender Systems: A literature review and empirical study on the algorithm selection problem for Collaborative Filtering},
+  journal = {Information Sciences},
+  year = {2018},
+  volume = {423},
+  pages = {128--144},
+  url = {http://linkinghub.elsevier.com/retrieve/pii/S0020025517309702},
+  doi = {https://doi.org/10.1016/j.ins.2017.09.050}
 }
-
-
-function define_mochila(){
-  i=n_itens;
-  k=peso;
-
-
-
-  while( i >0 ){
-
-    if(mochila[i][k] == mochila[i-1][k]){
-
-      i=i-1;
-      
-
-    }else if(mochila[i][k] != mochila[i-1][k]){
-
-      array_solucao.push(i);
-      k=k-array_itens[i].peso;
-      i=i-1;
-      
-    }else{
-
-      alert("erro");
-    }
-
-  }
-
-
-
-document.getElementById("mochila").innerHTML="";
-
-string="<div class=\"panel panel-primary\">\n<div class=\"panel-heading\">Mochila</div>\n<div class=\"panel-body\">";
-
-for(j=0;j<array_solucao.length;j++){
-
-  string=string+ array_solucao[j]+"</br>";
-
+</pre></td>
+</tr>
+<tr id="Elmahgiubi2016" class="entry">
+	<td>Elmahgiubi, M., Ahmed, O., Areibi, S. and Grewal, G.</td>
+	<td>Efficient algorithm selection for packet classification using machine learning <p class="infolinks">[<a href="javascript:toggleInfo('Elmahgiubi2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Elmahgiubi2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>2016 IEEE 21st International Workshop on Computer Aided Modelling and Design of Communication Links and Networks (CAMAD), pp. 24-30&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/CAMAD.2016.7790325">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Elmahgiubi2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Many packet classification algorithms with variable performances and capabilities are available. However, no single algorithm is guaranteed to outperform every other one in every case. Meta-Learning is a subfield in Machine Learning that aims to apply statistical techniques to automate the algorithm selection process. In this work, we propose a novel framework for efficient, automatic packet classification algorithm selection. By utilizing Meta-Learning and Artificial Neural Networks (ANNs) we are able to achieve an average accuracy of 90&#37; when automatically choosing the most appropriate algorithm when applied to over a hundred different rulesets ranging in size from 1K to 5K.</td>
+</tr>
+<tr id="bib_Elmahgiubi2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Elmahgiubi2016,
+  author = {Elmahgiubi, M and Ahmed, O and Areibi, S and Grewal, G},
+  title = {Efficient algorithm selection for packet classification using machine learning},
+  booktitle = {2016 IEEE 21st International Workshop on Computer Aided Modelling and Design of Communication Links and Networks (CAMAD)},
+  year = {2016},
+  pages = {24--30},
+  doi = {https://doi.org/10.1109/CAMAD.2016.7790325}
 }
- string=string+"</div></div>";
-
- $("#mochila").append(string);
-
-document.getElementById("boton").innerHTML="";
-s=" <button type=\"button\" onclick=\"window.location.reload() \" class=\"btn btn-success btn-sm\"  data-toggle=\"tooltip\" title=\"recomeçar\">refresh</button>";
-
-$("#boton").append(s);
-
-
-
-
+</pre></td>
+</tr>
+<tr id="Filchenkov2015" class="entry">
+	<td>Filchenkov, A. and Pendryak, A.</td>
+	<td>Datasets meta-feature description for recommending feature selection algorithm <p class="infolinks">[<a href="javascript:toggleInfo('Filchenkov2015','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Filchenkov2015','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>2015 Artificial Intelligence and Natural Language and Information Extraction, Social Media and Web Search FRUCT Conference (AINL-ISMW FRUCT), pp. 11-18&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/AINL-ISMW-FRUCT.2015.7382962">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Filchenkov2015" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Meta-learning is an approach for solving the algorithm selection problem, which is how to choose the best algorithm for a certain task. This task corresponds to a dataset in machine learning and data mining. The main challenge in meta-learning is to engineer a meta-feature description for datasets. In the paper we apply meta-learning for feature selection. We found a meta-feature set which showed the best result in predicting proper feature selection algorithms. We also suggested a novel approach to engineer meta-features for data preprocessing algorithms, which is based on estimating the best parametrization of processing algorithms on small subsamples.</td>
+</tr>
+<tr id="bib_Filchenkov2015" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Filchenkov2015,
+  author = {Filchenkov, A and Pendryak, A},
+  title = {Datasets meta-feature description for recommending feature selection algorithm},
+  booktitle = {2015 Artificial Intelligence and Natural Language and Information Extraction, Social Media and Web Search FRUCT Conference (AINL-ISMW FRUCT)},
+  year = {2015},
+  pages = {11--18},
+  doi = {https://doi.org/10.1109/AINL-ISMW-FRUCT.2015.7382962}
 }
-
-
-
-
-</script>
-
-
-
-
+</pre></td>
+</tr>
+<tr id="Kanda2016" class="entry">
+	<td>Kanda, J., de Carvalho, A., Hruschka, E., Soares, C. and Brazdil, P.</td>
+	<td>Meta-learning to select the best meta-heuristic for the Traveling Salesman Problem: A comparison of meta-features <p class="infolinks">[<a href="javascript:toggleInfo('Kanda2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Kanda2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>Neurocomputing<br/>Vol. 205, pp. 393-406&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.neucom.2016.04.027">DOI</a> <a href="http://linkinghub.elsevier.com/retrieve/pii/S0925231216302867">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Kanda2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: textcopyright 2016 Elsevier B.V. The Traveling Salesman Problem (TSP) is one of the most studied optimization problems. Various meta-heuristics (MHs) have been proposed and investigated on many instances of this problem. It is widely accepted that the best MH varies for different instances. Ideally, one should be able to recommend the best MHs for a new TSP instance without having to execute them. However, this is a very difficult task. We address this task by using a meta-learning approach based on label ranking algorithms. These algorithms build a mapping that relates the characteristics of those instances (i.e., the meta-features) with the relative performance (i.e., the ranking) of MHs, based on (meta-)data extracted from TSP instances that have been already solved by those MHs. The success of this approach depends on the quality of the meta-features that describe the instances. In this work, we investigate four different sets of meta-features based on different measurements of the properties of TSP instances: edge and vertex measures, complex network measures, properties from the MHs, and subsampling landmarkers properties. The models are investigated in four different TSP scenarios presenting symmetry and connection strength variations. The experimental results indicate that meta-learning models can accurately predict rankings of MHs for different TSP scenarios. Good solutions for the investigated TSP instances can be obtained from the prediction of rankings of MHs, regardless of the learning algorithm used at the meta-level. The experimental results also show that the definition of the set of meta-features has an important impact on the quality of the solutions obtained.</td>
+</tr>
+<tr id="bib_Kanda2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Kanda2016,
+  author = {Kanda, Jorge and de Carvalho, Andre and Hruschka, Eduardo and Soares, Carlos and Brazdil, Pavel},
+  title = {Meta-learning to select the best meta-heuristic for the Traveling Salesman Problem: A comparison of meta-features},
+  journal = {Neurocomputing},
+  year = {2016},
+  volume = {205},
+  pages = {393--406},
+  url = {http://linkinghub.elsevier.com/retrieve/pii/S0925231216302867},
+  doi = {https://doi.org/10.1016/j.neucom.2016.04.027}
+}
+</pre></td>
+</tr>
+<tr id="Kang2015" class="entry">
+	<td>Kang, S. and Cho, S.</td>
+	<td>Optimal construction of one-against-one classifier based on meta-learning <p class="infolinks">[<a href="javascript:toggleInfo('Kang2015','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Kang2015','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>Neurocomputing<br/>Vol. 167, pp. 459-466&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.neucom.2015.04.048">DOI</a> <a href="http://linkinghub.elsevier.com/retrieve/pii/S0925231215005172">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Kang2015" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: textcopyright 2015 Elsevier B.V. A commonly used strategy for solving a multi-class classification problem is to decompose the original problem into several binary subproblems. The recently proposed method, diversified one-against-one (DOAO), constructs a one-against-one classifier by selecting the best classifier for each class pair from the set of heterogeneous base classifiers. It was found to yield better classification accuracy than other one-against-one classifiers that are based on individual classification algorithms. This paper presents a novel method, called optimally diversified one-against-one (ODOAO) which is an improvement of DOAO. ODOAO is based on meta-learning, and seeks to construct a multiple classifier system where a meta-classifier effectively combines the outputs from all the heterogeneous base classifiers that are trained using various classification algorithms for every class pair. Experimental results show that ODOAO outperforms DOAO and other one-against-one based methods with statistical significance.</td>
+</tr>
+<tr id="bib_Kang2015" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Kang2015,
+  author = {Kang, Seokho and Cho, Sungzoon},
+  title = {Optimal construction of one-against-one classifier based on meta-learning},
+  journal = {Neurocomputing},
+  year = {2015},
+  volume = {167},
+  pages = {459--466},
+  url = {http://linkinghub.elsevier.com/retrieve/pii/S0925231215005172},
+  doi = {https://doi.org/10.1016/j.neucom.2015.04.048}
+}
+</pre></td>
+</tr>
+<tr id="Kuck2016" class="entry">
+	<td>K&uuml;ck, M., Crone, S.F. and Freitag, M.</td>
+	<td>Meta-learning with neural networks and landmarking for forecasting model selection an empirical evaluation of different feature sets applied to industry data <p class="infolinks">[<a href="javascript:toggleInfo('Kuck2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Kuck2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>2016 International Joint Conference on Neural Networks (IJCNN), pp. 1499-1506&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/IJCNN.2016.7727376">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Kuck2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Although artificial neural networks are occasionally used in forecasting future sales for manufacturing in industry, the majority of algorithms applied today are univariate statistical time series methods for level, seasonal, trend or trend-seasonal patterns. With different statistical methods created for different time series patterns, large scale applications on 10,000s of times series require automatic method selection, often done manually by human experts based on various time series characteristics, or automatically using error metrics of past performance. However, the task of selecting adequate forecasting methods can also be viewed as a supervised learning problem. For instance, a neural network can be trained as a meta-learner relating characteristic time series features to the ex post accuracy of forecasting methods for each time series. Past research has proposed different sets of time series features for meta-learning including simple statistical or information-theoretic as well as model-based features, but have neglected the use of past forecast errors. This paper studies the predictive accuracy of using different feature sets for a neural network meta-learner selecting between four statistical forecasting models, introducing error-based features (landmarkers) and statistical tests as time series meta-features. A large-scale empirical study on NN3 industry data shows promising results of including error-based feature sets in meta-learning for selecting time series forecasting models.</td>
+</tr>
+<tr id="bib_Kuck2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Kuck2016,
+  author = {K&uuml;ck, M and Crone, S F and Freitag, M},
+  title = {Meta-learning with neural networks and landmarking for forecasting model selection an empirical evaluation of different feature sets applied to industry data},
+  booktitle = {2016 International Joint Conference on Neural Networks (IJCNN)},
+  year = {2016},
+  pages = {1499--1506},
+  doi = {https://doi.org/10.1109/IJCNN.2016.7727376}
+}
+</pre></td>
+</tr>
+<tr id="Lemke2015" class="entry">
+	<td>Lemke, C., Budka, M. and Gabrys, B.</td>
+	<td>Metalearning: a survey of trends and technologies <p class="infolinks">[<a href="javascript:toggleInfo('Lemke2015','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Lemke2015','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>Artificial Intelligence Review<br/>Vol. 44(1), pp. 117-130&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1007/s10462-013-9406-y">DOI</a> <a href="https://doi.org/10.1007/s10462-013-9406-y">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Lemke2015" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Metalearning attracted considerable interest in the machine learning community in the last years. Yet, some disagreement remains on what does or what does not constitute a metalearning problem and in which contexts the term is used in. This survey aims at giving an all-encompassing overview of the research directions pursued under the umbrella of metalearning, reconciling different definitions given in scientific literature, listing the choices involved when designing a metalearning system and identifying some of the future research challenges in this domain.</td>
+</tr>
+<tr id="bib_Lemke2015" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Lemke2015,
+  author = {Lemke, Christiane and Budka, Marcin and Gabrys, Bogdan},
+  title = {Metalearning: a survey of trends and technologies},
+  journal = {Artificial Intelligence Review},
+  year = {2015},
+  volume = {44},
+  number = {1},
+  pages = {117--130},
+  url = {https://doi.org/10.1007/s10462-013-9406-y},
+  doi = {https://doi.org/10.1007/s10462-013-9406-y}
+}
+</pre></td>
+</tr>
+<tr id="Lemke2010" class="entry">
+	<td>Lemke, C. and Gabrys, B.</td>
+	<td>Meta-learning for time series forecasting and forecast combination <p class="infolinks">[<a href="javascript:toggleInfo('Lemke2010','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Lemke2010','bibtex')">BibTeX</a>]</p></td>
+	<td>2010</td>
+	<td>Neurocomputing<br/>Vol. 73(10-12), pp. 2006-2016&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.neucom.2009.09.020">DOI</a> <a href="http://linkinghub.elsevier.com/retrieve/pii/S0925231210001074">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Lemke2010" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In research of time series forecasting, a lot of uncertainty is still related to the task of selecting an appropriate forecasting method for a problem. It is not only the individual algorithms that are available in great quantities; combination approaches have been equally popular in the last decades. Alone the question of whether to choose the most promising individual method or a combination is not straightforward to answer. Usually, expert knowledge is needed to make an informed decision, however, in many cases this is not feasible due to lack of resources like time, money and manpower. This work identifies an extensive feature set describing both the time series and the pool of individual forecasting methods. The applicability of different meta-learning approaches are investigated, first to gain knowledge on which model works best in which situation, later to improve forecasting performance. Results show the superiority of a ranking-based combination of methods over simple model selection approaches. textcopyright 2010 Elsevier B.V.</td>
+</tr>
+<tr id="bib_Lemke2010" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Lemke2010,
+  author = {Lemke, Christiane and Gabrys, Bogdan},
+  title = {Meta-learning for time series forecasting and forecast combination},
+  journal = {Neurocomputing},
+  year = {2010},
+  volume = {73},
+  number = {10-12},
+  pages = {2006--2016},
+  url = {http://linkinghub.elsevier.com/retrieve/pii/S0925231210001074},
+  doi = {https://doi.org/10.1016/j.neucom.2009.09.020}
+}
+</pre></td>
+</tr>
+<tr id="Leyva2014" class="entry">
+	<td>Leyva, E., Caises, Y., Gonz&aacute;lez, A. and P&eacute;rez, R.</td>
+	<td>On the use of meta-learning for instance selection: An architecture and an experimental study <p class="infolinks">[<a href="javascript:toggleInfo('Leyva2014','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Leyva2014','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>Information Sciences<br/>Vol. 266&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.ins.2014.01.007">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Leyva2014" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Many authors agree that, when applying instance selection to a data set, it would be useful to characterize the data set in order to choose the most suitable selection criterion. Based on this hypothesis, we propose an architecture for knowledge-based instance selection (KBIS) systems. It uses meta-learning to select the best suited instance selection method for each specific database, among several methods available. We carried out a study in order to verify whether this architecture can outperform the individual methods. Two different versions of a KBIS system based on our architecture, each using a different learner, were instantiated. They were evaluated experimentally and the results were compared to those of the individual methods used. textcopyright 2013 Published by Elsevier Inc.</td>
+</tr>
+<tr id="bib_Leyva2014" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Leyva2014,
+  author = {Leyva, E. and Caises, Y. and Gonz&aacute;lez, A. and P&eacute;rez, R.},
+  title = {On the use of meta-learning for instance selection: An architecture and an experimental study},
+  journal = {Information Sciences},
+  year = {2014},
+  volume = {266},
+  doi = {https://doi.org/10.1016/j.ins.2014.01.007}
+}
+</pre></td>
+</tr>
+<tr id="Luo2016" class="entry">
+	<td>Luo, G.</td>
+	<td>A review of automatic selection methods for machine learning algorithms and hyper-parameter values <p class="infolinks">[<a href="javascript:toggleInfo('Luo2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Luo2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>Network Modeling Analysis in Health Informatics and Bioinformatics<br/>Vol. 5(1), pp. 18&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1007/s13721-016-0125-6">DOI</a> <a href="https://doi.org/10.1007/s13721-016-0125-6">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Luo2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Machine learning studies automatic algorithms that improve themselves through experience. It is widely used for analyzing and extracting value from large biomedical data sets, or ``big biomedical data,'' advancing biomedical research, and improving healthcare. Before a machine learning model is trained, the user of a machine learning software tool typically must manually select a machine learning algorithm and set one or more model parameters termed hyper-parameters. The algorithm and hyper-parameter values used can greatly impact the resulting model's performance, but their selection requires special expertise as well as many labor-intensive manual iterations. To make machine learning accessible to layman users with limited computing expertise, computer science researchers have proposed various automatic selection methods for algorithms and/or hyper-parameter values for a given supervised machine learning problem. This paper reviews these methods, identifies several of their limitations in the big biomedical data environment, and provides preliminary thoughts on how to address these limitations. These findings establish a foundation for future research on automatically selecting algorithms and hyper-parameter values for analyzing big biomedical data.</td>
+</tr>
+<tr id="bib_Luo2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Luo2016,
+  author = {Luo, Gang},
+  title = {A review of automatic selection methods for machine learning algorithms and hyper-parameter values},
+  journal = {Network Modeling Analysis in Health Informatics and Bioinformatics},
+  year = {2016},
+  volume = {5},
+  number = {1},
+  pages = {18},
+  url = {https://doi.org/10.1007/s13721-016-0125-6},
+  doi = {https://doi.org/10.1007/s13721-016-0125-6}
+}
+</pre></td>
+</tr>
+<tr id="Menahem:2013:COC:2505515.2505619" class="entry">
+	<td>Menahem, E., Rokach, L. and Elovici, Y.</td>
+	<td>Combining One-class Classifiers via Meta Learning <p class="infolinks">[<a href="javascript:toggleInfo('Menahem:2013:COC:2505515.2505619','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Menahem:2013:COC:2505515.2505619','bibtex')">BibTeX</a>]</p></td>
+	<td>2013</td>
+	<td>Proceedings of the 22Nd ACM International Conference on Information &amp; Knowledge Management, pp. 2435-2440&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1145/2505515.2505619">DOI</a> <a href="http://doi.acm.org/10.1145/2505515.2505619">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Menahem:2013:COC:2505515.2505619" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Selecting the best classifier among the available ones is a difficult task, especially when only instances of one class exist. In this work we examine the notion of combining one-class classifiers as an alternative for selecting the best classifier. In particular, we propose two one-class classification performance measures to weigh classifiers and show that a simple ensemble that implements these measures can outperform the most popular one-class ensembles. Furthermore, we propose a new one-class ensemble scheme, TUPSO, which uses meta-learning to combine one-class classifiers. Our experiments demonstrate the superiority of TUPSO over all other tested ensembles and show that the TUPSO performance is statistically indistinguishable from that of the hypothetical best classifier.</td>
+</tr>
+<tr id="bib_Menahem:2013:COC:2505515.2505619" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Menahem:2013:COC:2505515.2505619,
+  author = {Menahem, Eitan and Rokach, Lior and Elovici, Yuval},
+  title = {Combining One-class Classifiers via Meta Learning},
+  booktitle = {Proceedings of the 22Nd ACM International Conference on Information &amp; Knowledge Management},
+  publisher = {ACM},
+  year = {2013},
+  pages = {2435--2440},
+  url = {http://doi.acm.org/10.1145/2505515.2505619},
+  doi = {https://doi.org/10.1145/2505515.2505619}
+}
+</pre></td>
+</tr>
+<tr id="Miranda2012" class="entry">
+	<td>Miranda, P.B.C., Prud&ecirc;ncio, R.B.C., Carvalho, A.C.P.L.F. and Soares, C.</td>
+	<td>Combining Meta-Learning with Multi-objective Particle Swarm Algorithms for SVM Parameter Selection: An Experimental Analysis <p class="infolinks">[<a href="javascript:toggleInfo('Miranda2012','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Miranda2012','bibtex')">BibTeX</a>]</p></td>
+	<td>2012</td>
+	<td>2012 Brazilian Symposium on Neural Networks, pp. 1-6&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/SBRN.2012.12">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Miranda2012" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Support Vector Machines (SVMs) have become a well succeeded technique due to the good performance it achieves on different learning problems. However, the SVM performance depends on adjustments of its parameters' values. The automatic SVM parameter selection is treated by many authors as an optimization problem whose goal is to find a suitable configuration of parameters for a given learning problem. This work performs a comparative study of combining Meta-Learning (ML) and Multi-Objective Particle Swarm Optimization (MOPSO) techniques for the SVM parameter selection problem. In this combination, configurations of parameters provided by ML are adopted as initial search points of the MOPSO techniques. Our hypothesis is that, starting the search with reasonable solutions will speed up the process performed by the MOPSO techniques. In our work, we implemented three MOPSO techniques applied to select two SVM parameters for classification. Our work's aim is to optimize the SVMs by seeking for configurations of parameters which maximize the success rate and minimize the number of support vectors (i.e., two objetive functions). In the experiments, the performance of the search algorithms using a traditional random initialization was compared to the performance achieved by initializing the search process using the ML suggestions. We verified that the combination of the techniques with ML obtained solutions with higher quality on a set of 40 classification problems.</td>
+</tr>
+<tr id="bib_Miranda2012" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Miranda2012,
+  author = {Miranda, P B C and Prud&ecirc;ncio, R B C and Carvalho, A C P L F and Soares, C},
+  title = {Combining Meta-Learning with Multi-objective Particle Swarm Algorithms for SVM Parameter Selection: An Experimental Analysis},
+  booktitle = {2012 Brazilian Symposium on Neural Networks},
+  year = {2012},
+  pages = {1--6},
+  doi = {https://doi.org/10.1109/SBRN.2012.12}
+}
+</pre></td>
+</tr>
+<tr id="Msr2017" class="entry">
+	<td>Mısır, M. and Sebag, M.</td>
+	<td>Alors: An algorithm recommender system <p class="infolinks">[<a href="javascript:toggleInfo('Msr2017','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Msr2017','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>Artificial Intelligence<br/>Vol. 244, pp. 291-314&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.artint.2016.12.001">DOI</a> <a href="http://linkinghub.elsevier.com/retrieve/pii/S0004370216301436">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Msr2017" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: textcopyright 2016 Elsevier B.V. Algorithm selection (AS), selecting the algorithm best suited for a particular problem instance, is acknowledged to be a key issue to make the best out of algorithm portfolios. This paper presents a collaborative filtering approach to AS. Collaborative filtering, popularized by the Netflix challenge, aims to recommend the items that a user will most probably like, based on the previous items she liked, and the items that have been liked by other users. As first noted by Stern et al. [47], algorithm selection can be formalized as a collaborative filtering problem, by considering that a problem instance “likes better“ the algorithms that achieve better performance on this particular instance. Two merits of collaborative filtering (CF) compared to the mainstream algorithm selection (AS) approaches are the following. Firstly, mainstream AS requires extensive and computationally expensive experiments to learn a performance model, with all algorithms launched on all problem instances, whereas CF can exploit a sparse matrix, with a few algorithms launched on each problem instance. Secondly, AS learns a performance model as a function of the initial instance representation, whereas CF builds latent factors to describe algorithms and instances, and uses the associated latent metrics to recommend algorithms for a specific problem instance. A main contribution of the proposed algorithm recommender ALORS system is to handle the cold start problem – emitting recommendations for a new problem instance – through the non-linear modeling of the latent factors based on the initial instance representation, extending the linear approach proposed by Stern et al. [47] . The merits and generality of ALORS are empirically demonstrated on the ASLib [6] and OpenML [53] benchmarks.</td>
+</tr>
+<tr id="bib_Msr2017" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Msr2017,
+  author = {Mısır, Mustafa and Sebag, Mich&egrave;le},
+  title = {Alors: An algorithm recommender system},
+  journal = {Artificial Intelligence},
+  year = {2017},
+  volume = {244},
+  pages = {291--314},
+  url = {http://linkinghub.elsevier.com/retrieve/pii/S0004370216301436},
+  doi = {https://doi.org/10.1016/j.artint.2016.12.001}
+}
+</pre></td>
+</tr>
+<tr id="Nanni2009" class="entry">
+	<td>Nanni, L. and Lumini, A.</td>
+	<td>A genetic encoding approach for learning methods for combining classifiers <p class="infolinks">[<a href="javascript:toggleInfo('Nanni2009','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Nanni2009','bibtex')">BibTeX</a>]</p></td>
+	<td>2009</td>
+	<td>Expert Systems with Applications<br/>Vol. 36(4), pp. 7510-7514&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.eswa.2008.09.029">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Nanni2009" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Several studies have reported that the ensemble of classifiers can improve the performance of a stand-alone classifier. In this paper, we propose a learning method for combining the predictions of a set of classifiers. The method described in this paper uses a genetic-based version of the correspondence analysis for combining classifiers. The correspondence analysis is based on the orthonormal representation of the labels assigned to the patterns by a pool of classifiers. In this paper instead of the orthonormal representation we use a pool of representations obtained by a genetic algorithm. Each single representation is used to train a different classifiers, these classifiers are combined by vote rule. The performance improvement with respect to other learning-based fusion methods is validated through experiments with several benchmark datasets.</td>
+</tr>
+<tr id="bib_Nanni2009" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Nanni2009,
+  author = {Nanni, Loris and Lumini, Alessandra},
+  title = {A genetic encoding approach for learning methods for combining classifiers},
+  journal = {Expert Systems with Applications},
+  year = {2009},
+  volume = {36},
+  number = {4},
+  pages = {7510--7514},
+  doi = {https://doi.org/10.1016/j.eswa.2008.09.029}
+}
+</pre></td>
+</tr>
+<tr id="Neto2014" class="entry">
+	<td>Neto, A.A.F. and Canuto, A.M.P.</td>
+	<td>Meta-learning and Multi-objective Optimization to Design Ensemble of Classifiers <p class="infolinks">[<a href="javascript:toggleInfo('Neto2014','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Neto2014','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>2014 Brazilian Conference on Intelligent Systems, pp. 91-96&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/BRACIS.2014.27">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Neto2014" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Ensemble of classifiers, or simply ensemble systems, have been proved to be efficient for pattern recognition tasks. However, its design can become a difficult task. For instance, the choice of its individual classifiers and the use of feature selection methods are very difficult to define in the design of these systems. In order to smooth out this problem, we will apply meta-learning and multi-objective optimization in the choice of important parameters of ensemble systems. Therefore, this work applies meta-learning techniques to define an initial configuration of an multi-objective optimization algorithm, more specifically NSGA II. The meta-learner is used to recommend the proportion of each type of base classifiers to compose the ensemble systems. The NSGA II is used to generate heterogeneous ensembles selecting attributes, types and parameters of base classifiers optimizing the classification error and the bad diversity. The results are analysed using error rate and multi-objective metrics in order to verify whether to use of meta-learning generates more accurate ensemble systems.</td>
+</tr>
+<tr id="bib_Neto2014" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Neto2014,
+  author = {Neto, A A F and Canuto, A M P},
+  title = {Meta-learning and Multi-objective Optimization to Design Ensemble of Classifiers},
+  booktitle = {2014 Brazilian Conference on Intelligent Systems},
+  year = {2014},
+  pages = {91--96},
+  doi = {https://doi.org/10.1109/BRACIS.2014.27}
+}
+</pre></td>
+</tr>
+<tr id="Parmezan2017" class="entry">
+	<td>Parmezan, A.R.S., Lee, H.D. and Wu, F.C.</td>
+	<td>Metalearning for choosing feature selection algorithms in data mining: Proposal of a new framework <p class="infolinks">[<a href="javascript:toggleInfo('Parmezan2017','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Parmezan2017','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>Expert Systems with Applications<br/>Vol. 75, pp. 1-24&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.eswa.2017.01.013">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Parmezan2017" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In Data Mining, during the preprocessing step, there is a considerable diversity of candidate algorithms to select important features, according to some criteria. This broad availability of algorithms that perform the Feature Selection task gives rise to the difficulty of choosing, a priori, between the algorithms at hand, the most promising one for a particular problem. In this paper, we present the proposal and evaluation of a new architecture for the recommendation of Feature Selection algorithms based on the use of Metalearning. Our framework is very flexible since the user can adapt it to its proper needs. This flexibility is one of the main advantages of our proposal over other approaches in the literature, which involve steps that cannot be adapted to the user's local requirements. Furthermore, it combines several concepts of intelligent systems, including Machine Learning and Data Mining, with topics derived from expert systems, as user and data-driven knowledge, with meta-knowledge. This set of solutions coupled with leading-edge technologies allows our architecture to be integrated into any information system, which impact on the automation of services and in reducing human effort during the process. Regarding the Metalearning process, our framework considers several types of properties inherent to the data sets, as well as, Feature Selection algorithms based on many information, distance, dependence and consistency measures. The quality of the methods for Feature Selection was estimated according to a multicriteria performance measure, which guided the ranking process of these algorithms for the construction of data metabases. Proposed by the authors of this work, this multicriteria performance measure combines any three measurements on a single one, creating an interesting and powerful tool to evaluate not only FS algorithms but also to assess any context where it is necessary a combination to maximize a measure or minimize it. The recommendation models, represented by decision trees and induced from the training metabases, allowed us to see in what circumstances a Feature Selection algorithm outperforms the other and what aspects of the data present greater influence in determining the performance of these algorithms. Nevertheless, if the user wishes, any other learning algorithm may be used to induce the recommendation model. This versatility is another strong point of this proposal. Results show that with the characterization of data, through statistical, information and complexity measures, it is possible to reach an accuracy higher than 90&#37;. Besides yielding recommendation models that are interpretable and robust to overfitting, the developed architecture is less computationally expensive than approaches recently proposed in the literature.</td>
+</tr>
+<tr id="bib_Parmezan2017" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Parmezan2017,
+  author = {Parmezan, Antonio Rafael Sabino and Lee, Huei Diana and Wu, Feng Chung},
+  title = {Metalearning for choosing feature selection algorithms in data mining: Proposal of a new framework},
+  journal = {Expert Systems with Applications},
+  year = {2017},
+  volume = {75},
+  pages = {1--24},
+  doi = {https://doi.org/10.1016/j.eswa.2017.01.013}
+}
+</pre></td>
+</tr>
+<tr id="Pilat2012" class="entry">
+	<td>Pil&aacute;t, M. and Neruda, R.</td>
+	<td>Meta-learning and Model Selection in Multi-objective Evolutionary Algorithms <p class="infolinks">[<a href="javascript:toggleInfo('Pilat2012','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Pilat2012','bibtex')">BibTeX</a>]</p></td>
+	<td>2012</td>
+	<td><br/>Vol. 12012 11th International Conference on Machine Learning and Applications, pp. 433-438&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/ICMLA.2012.78">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Pilat2012" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Most existing surrogate based evolutionary algorithms deal with only one model selected by the authors and different models are not considered. In this paper we propose a framework which enables automatic selection of types of surrogate models, and evaluate the effect of the type of selection on the overall performance of the resulting evolutionary algorithm. Two different types of model selection are tested and compared both in pre-selection scenario and in local search scenario.</td>
+</tr>
+<tr id="bib_Pilat2012" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Pilat2012,
+  author = {Pil&aacute;t, M and Neruda, R},
+  title = {Meta-learning and Model Selection in Multi-objective Evolutionary Algorithms},
+  booktitle = {2012 11th International Conference on Machine Learning and Applications},
+  year = {2012},
+  volume = {1},
+  pages = {433--438},
+  doi = {https://doi.org/10.1109/ICMLA.2012.78}
+}
+</pre></td>
+</tr>
+<tr id="Pise2016" class="entry">
+	<td>Pise, N. and Kulkarni, P.</td>
+	<td>Algorithm selection for classification problems <p class="infolinks">[<a href="javascript:toggleInfo('Pise2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Pise2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>2016 SAI Computing Conference (SAI), pp. 203-211&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/SAI.2016.7555983">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Pise2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: A number of algorithms are available in the areas of data mining, machine learning and pattern recognition for solving the same kind of problem. But there is a little guidance for suggesting algorithm to use which gives best results for the problem at hand. This paper shows an approach for solving this problem using meta-learning. The paper uses three types of data characteristics. Simple, information theoretic, and statistical data characteristics are used. Results are generated using nine different algorithms on thirty eight benchmark datasets from UCI repository. The proposed approach uses K-nearest neighbor algorithm for suggesting the suitable algorithm. Classifier accuracy is taken as a basis for recommending the algorithm. By using meta-learning, accurate method can be recommended as per the given data, and cognitive overload for applying each method, comparing with other methods and then selecting the suitable method for use can be reduced. Thus it helps in adaptive learning methods. The experimentation shows that predicted accuracies are matching with the actual accuracies for more than 90 &#37; of the benchmark datasets used. Thus it is concluded that the number of attributes, the number of instances, the number of classes, maximum probability of class and class entropy are playing a major role in classifier accuracy and algorithm selection for thirty eight datasets used for experimentation.</td>
+</tr>
+<tr id="bib_Pise2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Pise2016,
+  author = {Pise, N and Kulkarni, P},
+  title = {Algorithm selection for classification problems},
+  booktitle = {2016 SAI Computing Conference (SAI)},
+  year = {2016},
+  pages = {203--211},
+  doi = {https://doi.org/10.1109/SAI.2016.7555983}
+}
+</pre></td>
+</tr>
+<tr id="Prudencio2011" class="entry">
+	<td>Prud&ecirc;ncio, R.B.C., de Souto, M.C.P. and Ludermir, T.B.</td>
+	<td>Selecting Machine Learning Algorithms Using the Ranking Meta-Learning Approach <p class="infolinks">[<a href="javascript:toggleInfo('Prudencio2011','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Prudencio2011','bibtex')">BibTeX</a>]</p></td>
+	<td>2011</td>
+	<td><br/>Vol. 358Studies in Computational Intelligence, pp. 225-243&nbsp;</td>
+	<td>incollection</td>
+	<td><a href="https://doi.org/10.1007/978-3-642-20980-2_7">DOI</a> <a href="http://link.springer.com/10.1007/978-3-642-20980-2{\_}7">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Prudencio2011" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In this work, we present the use of Ranking Meta-Learning approaches to ranking and selecting algorithms for problems of time series forecasting and clustering of gene expression data. Given a problem (forecasting or clustering), the Meta-Learning approach provides a ranking of the candidate algorithms, according to the characteristics of the problem's dataset. The best ranked algorithm can be returned as the selected one. In order to evaluate the Ranking Meta-Learning proposal, prototypes were implemented to rank artificial neural networks models for forecasting financial and economic time series and to rank clustering algorithms in the context of cancer gene expression microarray datasets. The case studies regard experiments to measure the correlation between the suggested rankings of algorithms and the ideal rankings. The results revealed that Meta-Learning was able to suggest more adequate rankings in both domains of application considered. textcopyright 2011 Springer-Verlag Berlin Heidelberg.</td>
+</tr>
+<tr id="bib_Prudencio2011" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@incollection{Prudencio2011,
+  author = {Prud&ecirc;ncio, Ricardo B. C. and de Souto, Marcilio C. P. and Ludermir, Teresa B.},
+  title = {Selecting Machine Learning Algorithms Using the Ranking Meta-Learning Approach},
+  booktitle = {Studies in Computational Intelligence},
+  year = {2011},
+  volume = {358},
+  pages = {225--243},
+  url = {http://link.springer.com/10.1007/978-3-642-20980-27},
+  doi = {https://doi.org/10.1007/978-3-642-20980-2_7}
+}
+</pre></td>
+</tr>
+<tr id="Reif2014" class="entry">
+	<td>Reif, M., Shafait, F., Goldstein, M., Breuel, T. and Dengel, A.</td>
+	<td>Automatic classifier selection for non-experts <p class="infolinks">[<a href="javascript:toggleInfo('Reif2014','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Reif2014','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>Pattern Analysis and Applications<br/>Vol. 17(1)&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1007/s10044-012-0280-z">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Reif2014" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Choosing a suitable classifier for a given dataset is an important part of developing a pattern recognition system. Since a large variety of classification algorithms are proposed in literature, non-experts do not know which method should be used in order to obtain good classification results on their data. Meta-learning tries to address this problem by recommending promising classifiers based on meta-features computed from a given dataset. In this paper, we empirically evaluate five different categories of state-of-the-art meta-features for their suitability in predicting classification accuracies of several widely used classifiers (including Support Vector Machines, Neural Networks, Random Forests, Decision Trees, and Logistic Regression). Based on the evaluation results, we have developed the first open source meta-learning system that is capable of accurately predicting accuracies of target classifiers. The user provides a dataset as input and gets an automatically created high-performance ready-to-use pattern recognition system in a few simple steps. A user study of the system with non-experts showed that the users were able to develop more accurate pattern recognition systems in significantly less development time when using our system as compared to using a state-of-the-art data mining software. textcopyright 2012 Springer-Verlag London Limited.</td>
+</tr>
+<tr id="bib_Reif2014" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Reif2014,
+  author = {Reif, M. and Shafait, F. and Goldstein, M. and Breuel, T. and Dengel, A.},
+  title = {Automatic classifier selection for non-experts},
+  journal = {Pattern Analysis and Applications},
+  year = {2014},
+  volume = {17},
+  number = {1},
+  doi = {https://doi.org/10.1007/s10044-012-0280-z}
+}
+</pre></td>
+</tr>
+<tr id="Rokach2014" class="entry">
+	<td>Rokach, L., Schclar, A. and Itach, E.</td>
+	<td>Ensemble methods for multi-label classification <p class="infolinks">[<a href="javascript:toggleInfo('Rokach2014','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Rokach2014','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>Expert Systems with Applications<br/>Vol. 41(16), pp. 7507-7523&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.eswa.2014.06.015">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Rokach2014" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Ensemble methods have been shown to be an effective tool for solving multi-label classification tasks. In the RAndom k-labELsets (RAKEL) algorithm, each member of the ensemble is associated with a small randomly-selected subset of k labels. Then, a single label classifier is trained according to each combination of elements in the subset. In this paper we adopt a similar approach, however, instead of randomly choosing subsets, we select the minimum required subsets of k labels that cover all labels and meet additional constraints such as coverage of inter-label correlations. Construction of the cover is achieved by formulating the subset selection as a minimum set covering problem (SCP) and solving it by using approximation algorithms. Every cover needs only to be prepared once by offline algorithms. Once prepared, a cover may be applied to the classification of any given multi-label dataset whose properties conform with those of the cover. The contribution of this paper is two-fold. First, we introduce SCP as a general framework for constructing label covers while allowing the user to incorporate cover construction constraints. We demonstrate the effectiveness of this framework by proposing two construction constraints whose enforcement produces covers that improve the prediction performance of random selection by achieving better coverage of labels and inter-label correlations. Second, we provide theoretical bounds that quantify the probabilities of random selection to produce covers that meet the proposed construction criteria. The experimental results indicate that the proposed methods improve multi-label classification accuracy and stability compared to the RAKEL algorithm and to other state-of-the-art algorithms.</td>
+</tr>
+<tr id="bib_Rokach2014" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Rokach2014,
+  author = {Rokach, Lior and Schclar, Alon and Itach, Ehud},
+  title = {Ensemble methods for multi-label classification},
+  journal = {Expert Systems with Applications},
+  year = {2014},
+  volume = {41},
+  number = {16},
+  pages = {7507--7523},
+  doi = {https://doi.org/10.1016/j.eswa.2014.06.015}
+}
+</pre></td>
+</tr>
+<tr id="Roy2016" class="entry">
+	<td>Roy, A., Cruz, R.M., Sabourin, R. and Cavalcanti, G.D.</td>
+	<td>Meta-learning recommendation of default size of classifier pool for META-DES <p class="infolinks">[<a href="javascript:toggleInfo('Roy2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Roy2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>Neurocomputing<br/>Vol. 216, pp. 351-362&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.neucom.2016.08.013">DOI</a> <a href="http://linkinghub.elsevier.com/retrieve/pii/S0925231216308347">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Roy2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Dynamic ensemble selection (DES) is a mechanism for selecting an ensemble of competent classifiers from a pool of base classifiers, in order to classify a particular test sample. The size of this pool is user-defined, and yet is crucial for controlling the computational complexity and performance of a DES. An appropriate pool size depends on the choice of base classifiers, the underlying DES method used, and more importantly, the characteristics of the given problem. After the DES method and the base classifiers are selected, an appropriate pool size for a given problem can be obtained by the repetitive application of the DES with a variety of sizes, after which a selection is performed. Since this brute force approach is computationally expensive, researchers set the pool size to a pre-specified value. This strategy, may, however further complicate and reduce the performance of the DES method. Instead, we propose a framework that is akin to meta-learning, in order to predict a suitable pool size based on the intrinsic classification complexity of a problem. In our strategy, we collect meta-features corresponding to classification complexity from a number of data sets. Additionally, we obtain the best pool sizes for these data sets using the brute force approach. The association between these two pieces of information is captured using meta-regression models. Finally, for an unseen problem, we predict the pool size using this model and the classification complexity information. We carry out experiments on 65 two-class data sets and with a recent DES method, namely, META-DES. We also consider variants of meta-regression techniques and report prediction results, after which we carry out a statistical comparison among them. Moreover, we investigate the performance of META-DES and observe that it performs equivalently for both the predicted and the best pool sizes.</td>
+</tr>
+<tr id="bib_Roy2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Roy2016,
+  author = {Roy, Anandarup and Cruz, Rafael M.O. and Sabourin, Robert and Cavalcanti, George D.C.},
+  title = {Meta-learning recommendation of default size of classifier pool for META-DES},
+  journal = {Neurocomputing},
+  year = {2016},
+  volume = {216},
+  pages = {351--362},
+  url = {http://linkinghub.elsevier.com/retrieve/pii/S0925231216308347},
+  doi = {https://doi.org/10.1016/j.neucom.2016.08.013}
+}
+</pre></td>
+</tr>
+<tr id="Seshia:2012:QAS:2331147.2331165" class="entry">
+	<td>Seshia, S.A. and Rakhlin, A.</td>
+	<td>Quantitative Analysis of Systems Using Game-Theoretic Learning <p class="infolinks">[<a href="javascript:toggleInfo('Seshia:2012:QAS:2331147.2331165','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Seshia:2012:QAS:2331147.2331165','bibtex')">BibTeX</a>]</p></td>
+	<td>2012</td>
+	<td>ACM Trans. Embed. Comput. Syst.<br/>Vol. 11(S2), pp. 55:1--55:27&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1145/2331147.2331165">DOI</a> <a href="http://doi.acm.org/10.1145/2331147.2331165">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Seshia:2012:QAS:2331147.2331165" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: The analysis of quantitative properties, such as timing and power, is central to the design of reliable embedded software and systems. However, the verification of such properties on a program is made difficult by their heavy dependence on the program's environment, such as the processor it runs on. Modeling the environment by hand can be tedious, error prone, and time consuming. In this article, we present a new game-theoretic approach to analyzing quantitative properties that is based on performing systematic measurements to automatically learn a model of the environment. We model the problem as a game between our algorithm (player) and the environment of the program (adversary) in which the player seeks to accurately predict the property of interest, while the adversary sets environment states and parameters. To solve this problem, we employ a randomized strategy that repeatedly tests the program along a linear-sized set of program paths called basis paths, using the resulting measurements to infer a weighted-graph model of the environment from which quantitative properties can be predicted. Test cases are automatically generated using satisfiability modulo theories (SMT) solving. We prove that our algorithm can, under certain assumptions and with arbitrarily high probability, accurately predict properties such as worst-case execution time or estimate the distribution of execution times. Experimental results for execution time analysis demonstrate that our approach is efficient, accurate, and highly portable.</td>
+</tr>
+<tr id="bib_Seshia:2012:QAS:2331147.2331165" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Seshia:2012:QAS:2331147.2331165,
+  author = {Seshia, Sanjit A and Rakhlin, Alexander},
+  title = {Quantitative Analysis of Systems Using Game-Theoretic Learning},
+  journal = {ACM Trans. Embed. Comput. Syst.},
+  publisher = {ACM},
+  year = {2012},
+  volume = {11},
+  number = {S2},
+  pages = {55:1----55:27},
+  url = {http://doi.acm.org/10.1145/2331147.2331165},
+  doi = {https://doi.org/10.1145/2331147.2331165}
+}
+</pre></td>
+</tr>
+<tr id="Smetannikov2016" class="entry">
+	<td>Smetannikov, I., Deyneka, A. and Filchenkov, A.</td>
+	<td>Meta Learning Application in Rank Aggregation Feature Selection <p class="infolinks">[<a href="javascript:toggleInfo('Smetannikov2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Smetannikov2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>2016 3rd International Conference on Soft Computing &amp; Machine Intelligence (ISCMI), pp. 120-123&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/ISCMI.2016.55">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Smetannikov2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: One of the main tasks of machine learning and data mining is feature selection. Depending on the task different methods applied to find optimal balance between speed and feature selection quality. MeLiF algorithm effectively solves feature selection problem by building ensemble of feature ranking filters. It reduces filters aggregation problem to linear form optimization problem and works as a wrapper, but not on feature space as classical wrappers do, but on linear form coefficients space, which is much smaller. In this paper we tried to apply meta-learning to provide good starting optimization points for MeLiF method and as a result we increased not only speed but in some cases feature selection quality of this method.</td>
+</tr>
+<tr id="bib_Smetannikov2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Smetannikov2016,
+  author = {Smetannikov, I and Deyneka, A and Filchenkov, A},
+  title = {Meta Learning Application in Rank Aggregation Feature Selection},
+  booktitle = {2016 3rd International Conference on Soft Computing &amp; Machine Intelligence (ISCMI)},
+  year = {2016},
+  pages = {120--123},
+  doi = {https://doi.org/10.1109/ISCMI.2016.55}
+}
+</pre></td>
+</tr>
+<tr id="Smith-Miles:2009:CPM:1456650.1456656" class="entry">
+	<td>Smith-Miles, K.A.</td>
+	<td>Cross-disciplinary Perspectives on Meta-learning for Algorithm Selection <p class="infolinks">[<a href="javascript:toggleInfo('Smith-Miles:2009:CPM:1456650.1456656','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Smith-Miles:2009:CPM:1456650.1456656','bibtex')">BibTeX</a>]</p></td>
+	<td>2009</td>
+	<td>ACM Comput. Surv.<br/>Vol. 41(1), pp. 6:1--6:25&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1145/1456650.1456656">DOI</a> <a href="http://doi.acm.org/10.1145/1456650.1456656">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Smith-Miles:2009:CPM:1456650.1456656" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: The algorithm selection problem [Rice 1976] seeks to answer the question: Which algorithm is likely to perform best for my problem? Recognizing the problem as a learning task in the early 1990's, the machine learning community has developed the field of meta-learning, focused on learning about learning algorithm performance on classification problems. But there has been only limited generalization of these ideas beyond classification, and many related attempts have been made in other disciplines (such as AI and operations research) to tackle the algorithm selection problem in different ways, introducing different terminology, and overlooking the similarities of approaches. In this sense, there is much to be gained from a greater awareness of developments in meta-learning, and how these ideas can be generalized to learn about the behaviors of other (nonlearning) algorithms. In this article we present a unified framework for considering the algorithm selection problem as a learning problem, and use this framework to tie together the crossdisciplinary developments in tackling the algorithm selection problem. We discuss the generalization of meta-learning concepts to algorithms focused on tasks including sorting, forecasting, constraint satisfaction, and optimization, and the extension of these ideas to bioinformatics, cryptography, and other fields.</td>
+</tr>
+<tr id="bib_Smith-Miles:2009:CPM:1456650.1456656" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Smith-Miles:2009:CPM:1456650.1456656,
+  author = {Smith-Miles, Kate A},
+  title = {Cross-disciplinary Perspectives on Meta-learning for Algorithm Selection},
+  journal = {ACM Comput. Surv.},
+  publisher = {ACM},
+  year = {2009},
+  volume = {41},
+  number = {1},
+  pages = {6:1----6:25},
+  url = {http://doi.acm.org/10.1145/1456650.1456656},
+  doi = {https://doi.org/10.1145/1456650.1456656}
+}
+</pre></td>
+</tr>
+<tr id="Smith-Miles2010" class="entry">
+	<td>Smith-Miles, K. and Islam, R.</td>
+	<td>Meta-learning for data summarization based on instance selection method <p class="infolinks">[<a href="javascript:toggleInfo('Smith-Miles2010','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Smith-Miles2010','bibtex')">BibTeX</a>]</p></td>
+	<td>2010</td>
+	<td>IEEE Congress on Evolutionary Computation, pp. 1-8&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/CEC.2010.5585986">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Smith-Miles2010" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: The purpose of instance selection is to identify which instances (examples, patterns) in a large dataset should be selected as representatives of the entire dataset, without significant loss of information. When a machine learning method is applied to the reduced dataset, the accuracy of the model should not be significantly worse than if the same method were applied to the entire dataset. The reducibility of any dataset, and hence the success of instance selection methods, surely depends on the characteristics of the dataset, as well as the machine learning method. This paper adopts a meta-learning approach, via an empirical study of 112 classification datasets from the UCI Repository, to explore the relationship between data characteristics, machine learning methods, and the success of instance selection method.</td>
+</tr>
+<tr id="bib_Smith-Miles2010" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Smith-Miles2010,
+  author = {Smith-Miles, K and Islam, R},
+  title = {Meta-learning for data summarization based on instance selection method},
+  booktitle = {IEEE Congress on Evolutionary Computation},
+  year = {2010},
+  pages = {1--8},
+  doi = {https://doi.org/10.1109/CEC.2010.5585986}
+}
+</pre></td>
+</tr>
+<tr id="Sohn2007" class="entry">
+	<td>Sohn, S. and Shin, H.</td>
+	<td>Experimental study for the comparison of classifier combination methods <p class="infolinks">[<a href="javascript:toggleInfo('Sohn2007','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Sohn2007','bibtex')">BibTeX</a>]</p></td>
+	<td>2007</td>
+	<td>Pattern Recognition<br/>Vol. 40(1), pp. 33-40&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.patcog.2006.06.027">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Sohn2007" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In this paper, we compare the performances of classifier combination methods (bagging, modified random subspace method, classifier selection, parametric fusion) to logistic regression in consideration of various characteristics of input data. Four factors used to simulate the logistic model are: (a) combination function among input variables, (b) correlation between input variables, (c) variance of observation, and (d) training data set size. In view of typically unknown combination function among input variables, we use a Taguchi design to improve the practicality of our study results by letting it as an uncontrollable factor. Our experimental study results indicate the following: when training set size is large, performances of logistic regression and bagging are not significantly different. However, when training set size is small, the performance of logistic regression is worse than bagging. When training data set size is small and correlation is strong, both modified random subspace method and bagging perform better than the other three methods. When correlation is weak and variance is small, both parametric fusion and classifier selection algorithm appear to be the worst at our disappointment.</td>
+</tr>
+<tr id="bib_Sohn2007" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Sohn2007,
+  author = {Sohn, S.Y. and Shin, H.W.},
+  title = {Experimental study for the comparison of classifier combination methods},
+  journal = {Pattern Recognition},
+  year = {2007},
+  volume = {40},
+  number = {1},
+  pages = {33--40},
+  doi = {https://doi.org/10.1016/j.patcog.2006.06.027}
+}
+</pre></td>
+</tr>
+<tr id="Soltanmohammadi2016" class="entry">
+	<td>Soltanmohammadi, E., Naraghi-Pour, M. and van der Schaar, M.</td>
+	<td>Context-based unsupervised ensemble learning and feature ranking <p class="infolinks">[<a href="javascript:toggleInfo('Soltanmohammadi2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Soltanmohammadi2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>Machine Learning<br/>Vol. 105(3), pp. 459-485&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1007/s10994-016-5576-6">DOI</a> <a href="https://doi.org/10.1007/s10994-016-5576-6">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Soltanmohammadi2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In ensemble systems, several experts, which may have access to possibly different data, make decisions which are then fused by a combiner (meta-learner) to obtain a final result. Such ensemble-based systems are well-suited for processing big-data from sources such as social media, in-stream monitoring systems, networks, and markets, and provide more accurate results than single expert systems. However, most existing ensemble-learning techniques have two limitations: (i) they are supervised, and hence they require access to the true label, which is often unknown in practice, and (ii) they are not able to evaluate the impact of the various data features/contexts on the final decision, and hence they do not learn which data is required. In this paper we propose a joint estimation--detection method for evaluating the accuracy of each expert as a function of the data features/context and for fusing the experts decisions. The proposed method is unsupervised: the true labels are not available and no prior information is assumed regarding the performance of each expert. Extensive simulation results show the improvement of the proposed method as compared to the state-of-the-art approaches. We also provide a systematic, unsupervised method for ranking the informativeness of each feature on the decision making process.</td>
+</tr>
+<tr id="bib_Soltanmohammadi2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Soltanmohammadi2016,
+  author = {Soltanmohammadi, Erfan and Naraghi-Pour, Mort and van der Schaar, Mihaela},
+  title = {Context-based unsupervised ensemble learning and feature ranking},
+  journal = {Machine Learning},
+  year = {2016},
+  volume = {105},
+  number = {3},
+  pages = {459--485},
+  url = {https://doi.org/10.1007/s10994-016-5576-6},
+  doi = {https://doi.org/10.1007/s10994-016-5576-6}
+}
+</pre></td>
+</tr>
+<tr id="Song2012" class="entry">
+	<td>Song, Q., Wang, G. and Wang, C.</td>
+	<td>Automatic recommendation of classification algorithms based on data set characteristics <p class="infolinks">[<a href="javascript:toggleInfo('Song2012','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Song2012','bibtex')">BibTeX</a>]</p></td>
+	<td>2012</td>
+	<td>Pattern Recognition<br/>Vol. 45(7), pp. 2672-2689&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.patcog.2011.12.025">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Song2012" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Choosing appropriate classification algorithms for a given data set is very important and useful in practice but also is full of challenges. In this paper, a method of recommending classification algorithms is proposed. Firstly the feature vectors of data sets are extracted using a novel method and the performance of classification algorithms on the data sets is evaluated. Then the feature vector of a new data set is extracted, and its k nearest data sets are identified. Afterwards, the classification algorithms of the nearest data sets are recommended to the new data set. The proposed data set feature extraction method uses structural and statistical information to characterize data sets, which is quite different from the existing methods. To evaluate the performance of the proposed classification algorithm recommendation method and the data set feature extraction method, extensive experiments with the 17 different types of classification algorithms, the three different types of data set characterization methods and all possible numbers of the nearest data sets are conducted upon the 84 publicly available UCI data sets. The results indicate that the proposed method is effective and can be used in practice.</td>
+</tr>
+<tr id="bib_Song2012" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Song2012,
+  author = {Song, Qinbao and Wang, Guangtao and Wang, Chao},
+  title = {Automatic recommendation of classification algorithms based on data set characteristics},
+  journal = {Pattern Recognition},
+  year = {2012},
+  volume = {45},
+  number = {7},
+  pages = {2672--2689},
+  doi = {https://doi.org/10.1016/j.patcog.2011.12.025}
+}
+</pre></td>
+</tr>
+<tr id="Sotoca2006" class="entry">
+	<td>Sotoca, J., Mollineda, R. and S&aacute;nchez, J.</td>
+	<td>A meta-learning framework for pattern classification by means of data complexity measures <p class="infolinks">[<a href="javascript:toggleInfo('Sotoca2006','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Sotoca2006','bibtex')">BibTeX</a>]</p></td>
+	<td>2006</td>
+	<td>Inteligencia Artificial<br/>Vol. 10(29)&nbsp;</td>
+	<td>article</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="abs_Sotoca2006" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: It is widely accepted that the empirical behavior of classifiers strongly depends on available data. For a given problem, it is rather difficult to guess which classifier will provide the best performance or to set a proper expectation on classification performance. Traditional experimental studies consist of presenting accuracy of a set of classifiers on a small number of problems, without analyzing why a classifier outperforms other classification algorithms. Recently, some researchers have tried to characterize data complexity and relate it to classifier performance. In this paper, we present a general meta-learning framework based on a number of data complexity measures. We also discuss the applicability of this method to several problems in pattern analysis. textcopyright AEPIA.</td>
+</tr>
+<tr id="bib_Sotoca2006" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Sotoca2006,
+  author = {Sotoca, J.M. and Mollineda, R.A. and S&aacute;nchez, J.S.},
+  title = {A meta-learning framework for pattern classification by means of data complexity measures},
+  journal = {Inteligencia Artificial},
+  year = {2006},
+  volume = {10},
+  number = {29}
+}
+</pre></td>
+</tr>
+<tr id="Souto2008" class="entry">
+	<td>de Souto, M.C.P., Prudencio, R.B.C., Soares, R.G.F., de Araujo, D.S.A., Costa, I.G., Ludermir, T.B. and Schliep, A.</td>
+	<td>Ranking and selecting clustering algorithms using a meta-learning approach <p class="infolinks">[<a href="javascript:toggleInfo('Souto2008','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Souto2008','bibtex')">BibTeX</a>]</p></td>
+	<td>2008</td>
+	<td>2008 IEEE International Joint Conference on Neural Networks (IEEE World Congress on Computational Intelligence), pp. 3729-3735&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/IJCNN.2008.4634333">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Souto2008" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: We present a novel framework that applies a meta-learning approach to clustering algorithms. Given a dataset, our meta-learning approach provides a ranking for the candidate algorithms that could be used with that dataset. This ranking could, among other things, support non-expert users in the algorithm selection task. In order to evaluate the framework proposed, we implement a prototype that employs regression support vector machines as the meta-learner. Our case study is developed in the context of cancer gene expression micro-array datasets.</td>
+</tr>
+<tr id="bib_Souto2008" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Souto2008,
+  author = {de Souto, M C P and Prudencio, R B C and Soares, R G F and de Araujo, D S A and Costa, I G and Ludermir, T B and Schliep, A},
+  title = {Ranking and selecting clustering algorithms using a meta-learning approach},
+  booktitle = {2008 IEEE International Joint Conference on Neural Networks (IEEE World Congress on Computational Intelligence)},
+  year = {2008},
+  pages = {3729--3735},
+  doi = {https://doi.org/10.1109/IJCNN.2008.4634333}
+}
+</pre></td>
+</tr>
+<tr id="Sun2013" class="entry">
+	<td>Sun, Q. and Pfahringer, B.</td>
+	<td>Pairwise meta-rules for better meta-learning-based algorithm ranking <p class="infolinks">[<a href="javascript:toggleInfo('Sun2013','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Sun2013','bibtex')">BibTeX</a>]</p></td>
+	<td>2013</td>
+	<td>Machine Learning<br/>Vol. 93(1)&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1007/s10994-013-5387-y">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Sun2013" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In this paper, we present a novel meta-feature generation method in the context of meta-learning, which is based on rules that compare the performance of individual base learners in a one-against-one manner. In addition to these new meta-features, we also introduce a new meta-learner called Approximate Ranking Tree Forests (ART Forests) that performs very competitively when compared with several state-of-the-art meta-learners. Our experimental results are based on a large collection of datasets and show that the proposed new techniques can improve the overall performance of meta-learning for algorithm ranking significantly. A key point in our approach is that each performance figure of any base learner for any specific dataset is generated by optimising the parameters of the base learner separately for each dataset. textcopyright 2013 The Author(s).</td>
+</tr>
+<tr id="bib_Sun2013" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Sun2013,
+  author = {Sun, Q. and Pfahringer, B.},
+  title = {Pairwise meta-rules for better meta-learning-based algorithm ranking},
+  journal = {Machine Learning},
+  year = {2013},
+  volume = {93},
+  number = {1},
+  doi = {https://doi.org/10.1007/s10994-013-5387-y}
+}
+</pre></td>
+</tr>
+<tr id="Swiderski2016" class="entry">
+	<td>Swiderski, B., Osowski, S., Kruk, M. and Barhoumi, W.</td>
+	<td>Aggregation of classifiers ensemble using local discriminatory power and quantiles <p class="infolinks">[<a href="javascript:toggleInfo('Swiderski2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Swiderski2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>Expert Systems with Applications<br/>Vol. 46, pp. 316-323&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.eswa.2015.10.038">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Swiderski2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: The paper presents a new approach to the dynamic classifier selection in an ensemble by applying the best suited classifier for the particular testing sample. It is based on the area under curve (AUC) of the receiver operating characteristic (ROC) of each classifier. To allow application of different types of classifiers in an ensemble and to reduce the influence of outliers, the quantile representation of the signals is used. The quantiles divide the ordered data into essentially equal-sized data subsets providing approximately uniform distribution of [0–1] support for each data point. In this way the recognition problem is less sensitive to the outliers, scales and noise contained in the input attributes. The numerical results presented for the chosen benchmark data-mining sets and for the data-set of images representing melanoma and non-melanoma skin lesions have shown high efficiency of the proposed approach and superiority to the existing methods.</td>
+</tr>
+<tr id="bib_Swiderski2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Swiderski2016,
+  author = {Swiderski, Bartosz and Osowski, Stanislaw and Kruk, Michal and Barhoumi, Walid},
+  title = {Aggregation of classifiers ensemble using local discriminatory power and quantiles},
+  journal = {Expert Systems with Applications},
+  year = {2016},
+  volume = {46},
+  pages = {316--323},
+  doi = {https://doi.org/10.1016/j.eswa.2015.10.038}
+}
+</pre></td>
+</tr>
+<tr id="Tripathy2017" class="entry">
+	<td>Tripathy, M. and Panda, A.</td>
+	<td>A study of algorithm selection in data mining using meta-learning <p class="infolinks">[<a href="javascript:toggleInfo('Tripathy2017','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Tripathy2017','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>Journal of Engineering Science and Technology Review<br/>Vol. 10(2)&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://www.researchgate.net/publication/317399967{\_}A{\_}Study{\_}of{\_}Algorithm{\_}Selection{\_}in{\_}Data{\_}Mining{\_}using{\_}Meta-Learning">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Tripathy2017" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: textcopyright 2017. Eastern Macedonia and Thrace Institute of Technology. This article discusses the algorithm selection problem in data mining with the help of meta-learning. We present the issue with the help of the classification and clustering problems. In this study, we have analyzed the working of a metalearning system in connection with the classical algorithm selection problem. Various ranking combination methods available in the literature have been explored from the perspective of the measurement system. Discussion about two new ranking combination methods namely the relative ranking and the percentage ranking have been included. The study also identifies few potential challenges in relation to algorithm selection in data mining using meta-learning.</td>
+</tr>
+<tr id="bib_Tripathy2017" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Tripathy2017,
+  author = {Tripathy, M. and Panda, A.},
+  title = {A study of algorithm selection in data mining using meta-learning},
+  journal = {Journal of Engineering Science and Technology Review},
+  year = {2017},
+  volume = {10},
+  number = {2},
+  url = {https://www.researchgate.net/publication/317399967AStudyofAlgorithmSelectioninDataMiningusingMeta-Learning}
+}
+</pre></td>
+</tr>
+<tr id="Vilalta2002" class="entry">
+	<td>Vilalta, R. and Drissi, Y.</td>
+	<td>A perspective view and survey of meta-learning <p class="infolinks">[<a href="javascript:toggleInfo('Vilalta2002','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Vilalta2002','bibtex')">BibTeX</a>]</p></td>
+	<td>2002</td>
+	<td>Artificial Intelligence Review<br/>Vol. 18(2)&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1023/A:1019956318069">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Vilalta2002" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Different researchers hold different views of what the term meta-learning exactly means. The first part of this paper provides our own perspective view in which the goal is to build self-adaptive learners (i.e. learning algorithms that improve their bias dynamically through experience by accumulating meta-knowledge). The second part provides a survey of meta-learning as reported by the machine-learning literature. We find that, despite different views and research lines, a question remains constant: how can we exploit knowledge about learning (i.e. meta-knowledge) to improve the performance of learning algorithms? Clearly the answer to this question is key to the advancement of the field and continues being the subject of intensive research.</td>
+</tr>
+<tr id="bib_Vilalta2002" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Vilalta2002,
+  author = {Vilalta, R. and Drissi, Y.},
+  title = {A perspective view and survey of meta-learning},
+  journal = {Artificial Intelligence Review},
+  year = {2002},
+  volume = {18},
+  number = {2},
+  doi = {https://doi.org/10.1023/A:1019956318069}
+}
+</pre></td>
+</tr>
+<tr id="Wang2013" class="entry">
+	<td>Wang, G., Song, Q., Sun, H., Zhang, X., Xu, B. and Zhou, Y.</td>
+	<td>A feature subset selection algorithm automatic recommendation method <p class="infolinks">[<a href="javascript:toggleInfo('Wang2013','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Wang2013','bibtex')">BibTeX</a>]</p></td>
+	<td>2013</td>
+	<td>Journal of Artificial Intelligence Research<br/>Vol. 47&nbsp;</td>
+	<td>article</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="abs_Wang2013" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Many feature subset selection (FSS) algorithms have been proposed, but not all of them are appropriate for a given feature selection problem. At the same time, so far there is rarely a good way to choose appropriate FSS algorithms for the problem at hand. Thus, FSS algorithm automatic recommendation is very important and practically useful. In this paper, a meta learning based FSS algorithm automatic recommendation method is presented. The proposed method first identifies the data sets that are most similar to the one at hand by the k-nearest neighbor classification algorithm, and the distances among these data sets are calculated based on the commonly-used data set characteristics. Then, it ranks all the candidate FSS algorithms according to their performance on these similar data sets, and chooses the algorithms with best performance as the appropriate ones. The performance of the candidate FSS algorithms is evaluated by a multi-criteria metric that takes into account not only the classification accuracy over the selected features, but also the runtime of feature selection and the number of selected features. The proposed recommendation method is extensively tested on 115 real world data sets with 22 well-known and frequently-used different FSS algorithms for five representative classifiers. The results show the effectiveness of our proposed FSS algorithm recommendation method. textcopyright 2013 AI Access Foundation. All rights reserved.</td>
+</tr>
+<tr id="bib_Wang2013" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Wang2013,
+  author = {Wang, G. and Song, Q. and Sun, H. and Zhang, X. and Xu, B. and Zhou, Y.},
+  title = {A feature subset selection algorithm automatic recommendation method},
+  journal = {Journal of Artificial Intelligence Research},
+  year = {2013},
+  volume = {47}
+}
+</pre></td>
+</tr>
+<tr id="Wang:2014:GML:2663598.2629474" class="entry">
+	<td>Wang, G., Song, Q., Zhang, X. and Zhang, K.</td>
+	<td>A Generic Multilabel Learning-Based Classification Algorithm Recommendation Method <p class="infolinks">[<a href="javascript:toggleInfo('Wang:2014:GML:2663598.2629474','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Wang:2014:GML:2663598.2629474','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>ACM Trans. Knowl. Discov. Data<br/>Vol. 9(1), pp. 7:1--7:30&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1145/2629474">DOI</a> <a href="http://doi.acm.org/10.1145/2629474">URL</a>&nbsp;</td>
+</tr>
+<tr id="abs_Wang:2014:GML:2663598.2629474" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: As more and more classification algorithms continue to be developed, recommending appropriate algorithms to a given classification problem is increasingly important. This article first distinguishes the algorithm recommendation methods by two dimensions: (1) meta-features, which are a set of measures used to characterize the learning problems, and (2) meta-target, which represents the relative performance of the classification algorithms on the learning problem. In contrast to the existing algorithm recommendation methods whose meta-target is usually in the form of either the ranking of candidate algorithms or a single algorithm, this article proposes a new and natural multilabel form to describe the meta-target. This is due to the fact that there would be multiple algorithms being appropriate for a given problem in practice. Furthermore, a novel multilabel learning-based generic algorithm recommendation method is proposed, which views the algorithm recommendation as a multilabel learning problem and solves the problem by the mature multilabel learning algorithms. To evaluate the proposed multilabel learning-based recommendation method, extensive experiments with 13 well-known classification algorithms, two kinds of meta-targets such as algorithm ranking and single algorithm, and five different kinds of meta-features are conducted on 1,090 be</td>
+</tr>
+<tr id="bib_Wang:2014:GML:2663598.2629474" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Wang:2014:GML:2663598.2629474,
+  author = {Wang, Guangtao and Song, Qinbao and Zhang, Xueying and Zhang, Kaiyuan},
+  title = {A Generic Multilabel Learning-Based Classification Algorithm Recommendation Method},
+  journal = {ACM Trans. Knowl. Discov. Data},
+  publisher = {ACM},
+  year = {2014},
+  volume = {9},
+  number = {1},
+  pages = {7:1----7:30},
+  url = {http://doi.acm.org/10.1145/2629474},
+  doi = {https://doi.org/10.1145/2629474}
+}
+</pre></td>
+</tr>
+</tbody>
+</table>
+<footer>
+ <small>Created by <a href="http://jabref.sourceforge.net">JabRef</a> on 26/11/2017.</small>
+</footer>
+<!-- file generated by JabRef -->
 </body>
 </html>
