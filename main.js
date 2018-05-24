@@ -1,9 +1,7 @@
 
 $("button").click(function () {
  
-    $("modalWait").modal({
-		backdrop: 'static'
-	})
+	$(".hidden").show();
 
     var	isbnEntry = $("#nisbn").val() ;
     isbn_array=isbnEntry.split(",").map(item => item.trim());;
@@ -59,7 +57,8 @@ $("button").click(function () {
             error:"abort",
             complete:function(jqxhr,str){
                 console.log(jqxhr);
-                console.log(str);
+				console.log(str);
+				$(".hidden").hide();
             }
         }
        
@@ -70,13 +69,10 @@ $("button").click(function () {
   		
   		
   	}
-	  $('#modalWait').modal('hide');
-	$('body').removeClass('modal-open');
-	$('.modal-backdrop').remove();
-		
+	
+	
         
-  		 console.log("aqui");
-  	
+  		 
   	 
 
 
@@ -85,12 +81,12 @@ $("button").click(function () {
 		bootstrap: false,
 		exportButtons: true,
 		position:'top', 
-	});  
+	});
+	
     }
    );
    
-   
-
+ 
 
 
 
