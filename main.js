@@ -1,7 +1,7 @@
 
 $("button").click(function () {
  
-	$(".hidden").show();
+var div =	$(".hidden").show();
 
     var	isbnEntry = $("#nisbn").val() ;
     isbn_array=isbnEntry.split(",").map(item => item.trim());;
@@ -58,7 +58,7 @@ $("button").click(function () {
             complete:function(jqxhr,str){
                 console.log(jqxhr);
 				console.log(str);
-				$(".hidden").hide();
+				
             }
         }
        
@@ -82,7 +82,7 @@ $("button").click(function () {
 		exportButtons: true,
 		position:'top', 
 	});
-	
+	div.hide();
     }
    );
    
