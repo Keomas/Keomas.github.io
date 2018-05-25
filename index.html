@@ -10,24 +10,6 @@
 
 	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
 	<link href=".\TableExport-master/dist/css/tableexport.min.css" rel="stylesheet">
-	<style>
-		.hidden{
-    display:none;
-}
-.ajax_loader{
-    position:absolute;
-    width:100%;
-    height:100%;
-    left:0;
-    top:0;
-    background:rgba(0,0,0,.5);
-}
-.ajax_loader i{
-    position:absolute;    
-    left:50%;
-    top:50%;
-}
-	</style>
 	
 	<title>
 		Buscando ISBN
@@ -52,7 +34,7 @@
 				<input type="text" id="nisbn" class="form-control" aria-label="Default"  placeholder="ex:8560280944,960222944" aria-describedby="inputGroup-sizing-default">
 			</div>
 					  
-		  <button type="button" class="btn btn-success" data-toggle="modal" data-target="#modalWait">Buscar</button>
+		  <button type="button" class="btn btn-success" data-toggle="modal" data-target="#modalWait" onclick="search()">Buscar</button>
 		</div>
 		<div class="col-8">
 			<table class="table" id="tabela">
@@ -74,7 +56,23 @@
 	
 </div>
 
-<div class="ajax_loader hidden"><i class="fas fa-spinner fa-spin "></i></div>
+
+  <div class="modal" tabindex="-1" role="dialog" id="wait">
+	<div class="modal-dialog" role="document">
+	  <div class="modal-content">
+		<div class="modal-header">
+		  <h5 class="modal-title">Carregando</h5>
+		</div>
+		<div class="modal-body">
+			<div class="progress">
+				<div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100" style="width: 100%"></div>
+			</div>
+		</div>
+	  </div>
+	</div>
+  </div>
+
+
 
 
 <script src="main.js"></script>
