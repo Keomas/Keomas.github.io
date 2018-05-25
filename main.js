@@ -1,3 +1,5 @@
+var global=false;
+var table;
 
 function search () {
  
@@ -30,9 +32,11 @@ var urlBook = "https://www.googleapis.com/books/v1/volumes?q=isbn:";
 				var title = (book["volumeInfo"]["title"]);
 				
 				var authors = (book["volumeInfo"]["authors"]).join(", ");
-				
+				authors = authors != undefined ? authors : "não encontrado";
 				var publisher = (book["volumeInfo"]["publisher"]);
+				publisher = publisher != undefined ? publisher : "não encontrado";
 				var publishedDate = (book["volumeInfo"]["publishedDate"]);
+				publishedDate = publishedDate != undefined ? publishedDate : "não encontrado";
 				
 			         $( "<tr>"+
 			                    '<th scope="row">'+aux+"</th>"+
@@ -83,14 +87,19 @@ var urlBook = "https://www.googleapis.com/books/v1/volumes?q=isbn:";
   		 
   	 
 
+	  if(!global){
 
+			table = $("table").tableExport({
+				bootstrap: false,
+				exportButtons: true,
+				position:'top', 
+			});
+			global=!global;
+		}else{
+			table.remove();
+			table.reset();
 
-	$("table").tableExport({
-		bootstrap: false,
-		exportButtons: true,
-		position:'top', 
-	});
-
+		}
 	$('#wait').modal("hide");
 	$('#wait').css("display","none");
 	$('#wait').attr("class","modal");
